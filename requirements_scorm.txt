@@ -1,0 +1,11 @@
+# Для конвертации PDF в изображения (выберите один вариант):
+
+# Вариант 1: PyMuPDF (рекомендуется - проще в установке, без внешних зависимостей)
+PyMuPDF>=1.23.0
+
+# Вариант 2: pdf2image (требует установки poppler)
+# pdf2image>=1.16.0
+# Для macOS: brew install poppler
+# Для Linux: sudo apt-get install poppler-utils
+# Для Windows: скачайте poppler и добавьте в PATH
+
