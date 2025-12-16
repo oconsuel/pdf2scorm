@@ -284,13 +284,37 @@ class PDFToSCORM:
         // Загрузка прогресса
         function loadProgress() {{
             try {{
+                // Проверяем настройки rememberLastPage
+                var rememberLastPage = true;
+                if (window.SCORM_CONFIG && window.SCORM_CONFIG.progressCompletion) {{
+                    rememberLastPage = window.SCORM_CONFIG.progressCompletion.rememberLastPage;
+                }}
+                
+                if (!rememberLastPage) {{
+                    return; // Не загружаем прогресс, если настройка отключена
+                }}
+                
                 // Пытаемся загрузить последнюю посещенную страницу из location
                 var lastLocation = scorm.get(getLocationField());
                 if (lastLocation && lastLocation !== "" && lastLocation !== "null") {{
                     var lastPage = parseInt(lastLocation);
                     if (!isNaN(lastPage) && lastPage > 0 && lastPage <= totalPages) {{
-                        // Если это не текущая страница, можно перенаправить
-                        // Но так как каждая страница - отдельный SCO, это будет работать через Moodle
+                        // Сохраняем информацию о последней странице для использования
+                        window.lastVisitedPage = lastPage;
+                    }}
+                }}
+                
+                // Загружаем suspend_data для восстановления полного прогресса
+                var suspendData = scorm.get(getSuspendDataField());
+                if (suspendData && suspendData !== "" && suspendData !== "null") {{
+                    try {{
+                        var progressData = JSON.parse(suspendData);
+                        window.progressData = progressData;
+                        if (progressData.lastPage && progressData.lastPage > 0) {{
+                            window.lastVisitedPage = progressData.lastPage;
+                        }}
+                    }} catch (e) {{
+                        console.log("Ошибка парсинга suspend_data:", e);
                     }}
                 }}
             }} catch (e) {{
@@ -301,6 +325,17 @@ class PDFToSCORM:
         // Сохранение прогресса
         function saveProgress() {{
             if (!scorm.API.isPresent || !initialized) return;
+            
+            // Проверяем настройку saveOnEachTransition
+            var saveOnEachTransition = true;
+            if (window.SCORM_CONFIG && window.SCORM_CONFIG.progressCompletion) {{
+                saveOnEachTransition = window.SCORM_CONFIG.progressCompletion.saveOnEachTransition;
+            }}
+            
+            // Если автосохранение отключено, сохраняем только при явном вызове
+            if (!saveOnEachTransition && arguments.length === 0) {{
+                return; // Пропускаем автоматическое сохранение
+            }}
             
             try {{
                 // Сохраняем номер текущей страницы в location
@@ -361,10 +396,27 @@ class PDFToSCORM:
                 // Определяем общий прогресс по всем страницам
                 var visitedCount = progressData.visitedPages.length;
                 
-                // Обновляем статус прохождения
+                // Вычисляем прогресс с учётом настроек
+                var progress = visitedCount / totalPages;
+                var completionThreshold = 1.0; // По умолчанию 100%
+                
+                if (window.SCORM_CONFIG && window.SCORM_CONFIG.progressCompletion) {{
+                    completionThreshold = window.SCORM_CONFIG.progressCompletion.completionThreshold / 100.0;
+                    var progressMethod = window.SCORM_CONFIG.progressCompletion.progressMethod;
+                    
+                    if (progressMethod === 'tasks') {{
+                        // Для задач пока используем базовый прогресс
+                        progress = visitedCount / totalPages;
+                    }} else if (progressMethod === 'combined') {{
+                        // Комбинированный: 50% экраны + 50% задачи
+                        progress = (visitedCount / totalPages) * 0.5;
+                    }}
+                }}
+                
+                // Обновляем статус прохождения с учётом threshold
                 var currentStatus = scorm.get(getStatusField());
                 
-                if (visitedCount === totalPages) {{
+                if (progress >= completionThreshold || visitedCount === totalPages) {{
                     if (scormVersion === "2004") {{
                         scorm.set(getStatusField(), "completed");
                     }} else {{
@@ -411,12 +463,22 @@ class PDFToSCORM:
             }}, 500);
         }});
         
-        // Автосохранение каждые 3 секунды для надежности
-        var saveInterval = setInterval(function() {{
-            if (initialized) {{
-                saveProgress();
-            }}
-        }}, 3000);
+        // Автосохранение каждые 3 секунды для надежности (если включено)
+        window.saveInterval = null;
+        if (window.SCORM_CONFIG && window.SCORM_CONFIG.progressCompletion && window.SCORM_CONFIG.progressCompletion.saveOnEachTransition) {{
+            window.saveInterval = setInterval(function() {{
+                if (initialized) {{
+                    saveProgress();
+                }}
+            }}, 3000);
+        }} else {{
+            // Если автосохранение отключено, сохраняем только при явных событиях
+            window.saveInterval = setInterval(function() {{
+                if (initialized) {{
+                    // Сохраняем только при явном вызове
+                }}
+            }}, 30000); // Увеличиваем интервал до 30 секунд
+        }}
         
         // Сохранение при закрытии/переходе
         window.addEventListener('beforeunload', function() {{
