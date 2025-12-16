@@ -297,22 +297,32 @@ export function ScormPlayer({ packageBlob, config, onClose }: ScormPlayerProps) 
     }
     
     // Заменяем относительные пути на blob URLs
-    const basePath = scoFile.substring(0, scoFile.lastIndexOf('/') + 1);
+    // Определяем базовый путь для SCO файла
+    const lastSlashIndex = scoFile.lastIndexOf('/');
+    const basePath = lastSlashIndex >= 0 ? scoFile.substring(0, lastSlashIndex + 1) : '';
     
     // Обрабатываем src и href атрибуты
     scoContent = scoContent.replace(
       /(src|href)=["']([^"']+)["']/g,
       (match, attr, path) => {
-        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
-          return match; // Оставляем абсолютные пути
+        // Пропускаем абсолютные URL и data URI
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) {
+          return match;
         }
         
         // Решаем относительный путь
         let resolvedPath = path;
-        if (!path.startsWith('/')) {
-          resolvedPath = basePath + path;
-        } else {
+        if (path.startsWith('/')) {
+          // Абсолютный путь от корня пакета
           resolvedPath = path.substring(1); // Убираем ведущий /
+        } else {
+          // Относительный путь от SCO файла
+          if (basePath) {
+            resolvedPath = basePath + path;
+          } else {
+            // Если SCO файл в корне, путь уже правильный
+            resolvedPath = path;
+          }
         }
         
         // Нормализуем путь (убираем .. и .)
@@ -320,19 +330,44 @@ export function ScormPlayer({ packageBlob, config, onClose }: ScormPlayerProps) 
         const normalized: string[] = [];
         for (const part of parts) {
           if (part === '..') {
-            normalized.pop();
+            if (normalized.length > 0) {
+              normalized.pop();
+            }
           } else if (part !== '.' && part !== '') {
             normalized.push(part);
           }
         }
         resolvedPath = normalized.join('/');
         
-        // Ищем blob URL для ресурса
-        const blobUrl = resourceUrls.get(resolvedPath);
+        // Пробуем найти blob URL для ресурса
+        // Проверяем точное совпадение
+        let blobUrl = resourceUrls.get(resolvedPath);
+        
+        // Если не найдено, пробуем варианты с разными регистрами и путями
+        if (!blobUrl) {
+          // Пробуем найти в fileMap по разным вариантам пути
+          for (const [filePath, blob] of fileMap.entries()) {
+            // Нормализуем путь файла для сравнения
+            const normalizedFilePath = filePath.split('/').filter((p: string) => p).join('/');
+            const normalizedResolved = resolvedPath.split('/').filter((p: string) => p).join('/');
+            
+            if (normalizedFilePath.toLowerCase() === normalizedResolved.toLowerCase() ||
+                normalizedFilePath.endsWith('/' + normalizedResolved) ||
+                normalizedFilePath === normalizedResolved) {
+              // Создаем blob URL для этого файла
+              blobUrl = URL.createObjectURL(blob);
+              resourceUrls.set(resolvedPath, blobUrl);
+              break;
+            }
+          }
+        }
+        
         if (blobUrl) {
           return `${attr}="${blobUrl}"`;
         }
         
+        // Если не найдено, оставляем оригинальный путь (может быть ошибка в пакете)
+        console.warn(`Resource not found in package: ${resolvedPath} (original: ${path})`);
         return match;
       }
     );
@@ -714,7 +749,7 @@ export function ScormPlayer({ packageBlob, config, onClose }: ScormPlayerProps) 
               src={launchUrl}
               className="w-full h-full border-0"
               title="SCORM Player"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation"
+              sandbox="allow-scripts allow-forms allow-popups"
             />
           )}
         </div>

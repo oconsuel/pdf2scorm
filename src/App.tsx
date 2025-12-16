@@ -6,7 +6,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { HelpModal } from './components/HelpModal';
 import { PackagePreviewModal } from './components/PackagePreviewModal';
 import { ScormPlayer } from './components/ScormPlayer';
-import { UploadedFile, SCORMConfig, Theme } from './types';
+import { UploadedFile, SCORMConfig, Theme, ConversionMode } from './types';
 import { defaultConfig } from './utils/configPresets';
 import { validateConfig, generateScormPackage } from './utils/scormGenerator';
 
@@ -20,6 +20,7 @@ function App() {
   const [lastPackage, setLastPackage] = useState<Blob | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
+  const [conversionMode, setConversionMode] = useState<ConversionMode>('lecture_based');
 
   useEffect(() => {
     // Применяем тему
@@ -50,7 +51,8 @@ function App() {
         title: config.title || launchFile.file.name.replace(/\.[^/.]+$/, ''),
       };
       
-      const packageBlob = await generateScormPackage(files, configWithTitle);
+      // Используем выбранный режим
+      const packageBlob = await generateScormPackage(files, configWithTitle, conversionMode);
       setLastPackage(packageBlob);
       setHasPackage(true);
       setShowPreview(true); // Показываем превью после успешной генерации
@@ -118,9 +120,33 @@ function App() {
           {/* Right Column - Settings */}
           <div className="flex flex-col min-h-0 lg:border-l lg:border-gray-200 lg:dark:border-gray-700 lg:pl-6 pt-6 lg:pt-0 border-t border-gray-200 dark:border-gray-700">
             <div className="mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
-                Панель настроек SCORM
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
+                  Панель настроек SCORM
+                </h2>
+                {/* Переключатель режима */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Режим:</span>
+                  <select
+                    value={conversionMode}
+                    onChange={(e) => setConversionMode(e.target.value as ConversionMode)}
+                    className="text-xs px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white cursor-pointer"
+                  >
+                    <option value="lecture_based">Лекция</option>
+                    <option value="page_based">Страницы</option>
+                  </select>
+                </div>
+              </div>
+              {conversionMode === 'lecture_based' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Режим "Лекция": PDF разбивается на логические страницы с автоматическим определением структуры
+                </p>
+              )}
+              {conversionMode === 'page_based' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Режим "Страницы": каждая страница PDF становится отдельной страницей SCORM
+                </p>
+              )}
             </div>
             <div className="flex-1 overflow-hidden">
               <SettingsPanel config={config} onConfigChange={setConfig} />

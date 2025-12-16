@@ -14,6 +14,8 @@ import json
 
 from file_router import FileRouter
 from converters.pdf_converter import PDFConverter
+from converters.pdf_parser import PDFParser
+from builders.lecture_builder import build_lecture
 from scorm_builder import SCORMBuilder
 
 app = Flask(__name__)
@@ -73,6 +75,9 @@ def convert_to_scorm():
         
         config = json.loads(config_json)
         
+        # Получаем режим работы (по умолчанию lecture_based для нового функционала)
+        mode = request.form.get('mode', 'lecture_based')  # 'page_based' или 'lecture_based'
+        
         # Получаем метаданные файлов
         files_metadata_json = request.form.get('files_metadata')
         files_metadata = json.loads(files_metadata_json) if files_metadata_json else []
@@ -110,45 +115,104 @@ def convert_to_scorm():
         # Определяем launch файл из исходных файлов
         launch_file_original = next((f for f in uploaded_files if f['is_launch']), uploaded_files[0])
         
-        # Обрабатываем файлы через роутер с конфигурацией
-        processed_files = file_router.process_files(uploaded_files, config)
+        if mode == 'lecture_based':
+            # Новый режим: парсим PDF → строим Lecture → генерируем SCORM
+            try:
+                # Парсим PDF файлы
+                all_parsed_elements = []
+                for file_info in uploaded_files:
+                    if file_info['name'].lower().endswith('.pdf'):
+                        pdf_path = file_info['path']
+                        selected_pages = file_info.get('selected_pages')
+                        
+                        # Парсим PDF (OCR только как fallback)
+                        parser = PDFParser(pdf_path, use_ocr=False)
+                        parser_temp_dir = None  # Сохраняем temp_dir парсера
+                        try:
+                            app.logger.info(f"Парсинг PDF: {file_info['name']}, OCR fallback: {parser.use_ocr_fallback}")
+                            parsed_elements = parser.parse(selected_pages)
+                            app.logger.info(f"Извлечено элементов: {len(parsed_elements)}")
+                            all_parsed_elements.extend(parsed_elements)
+                            # Сохраняем temp_dir парсера для копирования изображений
+                            parser_temp_dir = parser.temp_dir
+                        finally:
+                            # НЕ вызываем cleanup() сразу - нужен доступ к изображениям
+                            # parser.cleanup() будет вызван после сборки SCORM
+                            pass
+                
+                if not all_parsed_elements:
+                    return jsonify({'error': 'No elements extracted from PDF'}), 400
+                
+                # Строим модель лекции
+                # Передаем temp_dir для сохранения изображений (если нужно)
+                # Изображения уже должны быть сохранены парсером в parser.temp_dir
+                lecture = build_lecture(all_parsed_elements, output_images_dir=None)
+                
+                # Обновляем title из config, если указан
+                if config.get('title'):
+                    lecture.title = config['title']
+                
+                # Генерируем SCORM из лекции
+                # Передаем parser_temp_dir для копирования изображений
+                scorm_package_path = scorm_builder.build_from_lecture(
+                    lecture=lecture,
+                    config=config,
+                    output_dir=temp_dir,
+                    parser_temp_dir=parser_temp_dir
+                )
+                
+                # Очищаем temp_dir парсера после сборки SCORM
+                if parser_temp_dir and parser_temp_dir.exists():
+                    import shutil
+                    shutil.rmtree(parser_temp_dir, ignore_errors=True)
+                
+            except Exception as e:
+                import traceback
+                error_trace = traceback.format_exc()
+                app.logger.error(f"Error in lecture_based mode: {error_trace}")
+                return jsonify({'error': f'Error in lecture_based mode: {str(e)}'}), 500
         
-        if not processed_files:
-            return jsonify({'error': 'No files were processed'}), 400
-        
-        # Определяем launch файл из обработанных файлов
-        # Если это PDF, то launch файл должен быть первым HTML файлом (page_1.html)
-        # Иначе ищем launch файл среди обработанных
-        launch_file_name = None
-        if launch_file_original['name'].lower().endswith('.pdf'):
-            # Для PDF ищем первый HTML файл
-            pdf_html_files = [f for f in processed_files if f.get('type') == 'sco' and str(f['path']).endswith('.html')]
-            if pdf_html_files:
-                # Сортируем по имени файла, чтобы получить page_1.html
-                pdf_html_files.sort(key=lambda x: str(x['path']))
-                launch_file_name = pdf_html_files[0]['path'].name
-                app.logger.info(f"PDF launch file determined: {launch_file_name}")
         else:
-            # Для других файлов используем оригинальное имя
-            launch_file_name = launch_file_original['name']
-        
-        # Если не нашли launch файл, используем первый SCO файл
-        if not launch_file_name:
-            sco_files = [f for f in processed_files if f.get('type') == 'sco']
-            if sco_files:
-                launch_file_name = sco_files[0]['path'].name
+            # Старый режим (page_based): обрабатываем файлы через роутер
+            processed_files = file_router.process_files(uploaded_files, config)
+            
+            if not processed_files:
+                return jsonify({'error': 'No files were processed'}), 400
+            
+            # Определяем launch файл из обработанных файлов
+            launch_file_name = None
+            if launch_file_original['name'].lower().endswith('.pdf'):
+                pdf_html_files = [f for f in processed_files if f.get('type') == 'sco' and str(f['path']).endswith('.html')]
+                if pdf_html_files:
+                    pdf_html_files.sort(key=lambda x: str(x['path']))
+                    launch_file_name = pdf_html_files[0]['path'].name
+                    app.logger.info(f"PDF launch file determined: {launch_file_name}")
             else:
                 launch_file_name = launch_file_original['name']
+            
+            if not launch_file_name:
+                sco_files = [f for f in processed_files if f.get('type') == 'sco']
+                if sco_files:
+                    launch_file_name = sco_files[0]['path'].name
+                else:
+                    launch_file_name = launch_file_original['name']
+            
+            # Собираем SCORM пакет
+            course_title = config.get('title') or launch_file_original['name'].rsplit('.', 1)[0] or 'SCORM Course'
+            scorm_package_path = scorm_builder.build(
+                processed_files=processed_files,
+                launch_file=launch_file_name,
+                config=config,
+                output_dir=temp_dir,
+                course_title=course_title,
+                mode='page_based'
+            )
         
-        # Собираем SCORM пакет
-        course_title = config.get('title') or launch_file_original['name'].rsplit('.', 1)[0] or 'SCORM Course'
-        scorm_package_path = scorm_builder.build(
-            processed_files=processed_files,
-            launch_file=launch_file_name,
-            config=config,
-            output_dir=temp_dir,
-            course_title=course_title
-        )
+        # Определяем название курса для имени файла
+        if mode == 'lecture_based':
+            course_title = lecture.title if 'lecture' in locals() else config.get('title', 'SCORM Course')
+        else:
+            course_title = config.get('title') or launch_file_original['name'].rsplit('.', 1)[0] or 'SCORM Course'
         
         # Отправляем ZIP файл
         return send_file(

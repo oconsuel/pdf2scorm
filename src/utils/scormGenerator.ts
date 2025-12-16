@@ -4,7 +4,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export async function generateScormPackage(
   files: UploadedFile[],
-  config: SCORMConfig
+  config: SCORMConfig,
+  mode: 'page_based' | 'lecture_based' = 'lecture_based'
 ): Promise<Blob> {
   // Проверяем доступность API перед отправкой
   try {
@@ -39,6 +40,9 @@ export async function generateScormPackage(
   
   // Добавляем конфигурацию SCORM
   formData.append('config', JSON.stringify(config));
+  
+  // Добавляем режим работы
+  formData.append('mode', mode);
   
   // Добавляем метаданные файлов
   const filesMetadata = files.map(f => ({

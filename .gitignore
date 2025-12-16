@@ -97,3 +97,23 @@ coverage/
 *.sublime-project
 *.sublime-workspace
 
+# Debug and temporary output
+debug_output/
+images/
+*.scorm_package/
+*_scorm_temp/
+*_scorm_package/
+
+# Generated SCORM packages
+*.zip
+*.scorm
+
+# Temporary files from PDF processing
+temp/
+tmp/
+*.tmp
+
+# Flask instance folder
+instance/
+.webassets-cache
+

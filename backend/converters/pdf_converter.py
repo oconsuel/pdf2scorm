@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Конвертер PDF файлов в SCORM
-Использует существующий класс PDFToSCORM
+Использует PDFParser для извлечения элементов из PDF
 """
 
 import sys
@@ -13,15 +13,31 @@ from typing import Optional, List
 parent_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(parent_dir))
 
-try:
-    from pdf_to_scorm import PDFToSCORM
-except ImportError:
-    # Если не удалось импортировать, создаём заглушку
-    raise ImportError("Не удалось импортировать pdf_to_scorm.py. Убедитесь, что файл находится в корне проекта.")
+from converters.pdf_parser import PDFParser
+from models import ParsedElement
 
 
 class PDFConverter:
     """Конвертер PDF файлов в SCORM формат"""
+    
+    def parse(self, pdf_path: Path, selected_pages: Optional[List[int]] = None) -> List[ParsedElement]:
+        """
+        Парсит PDF файл и извлекает элементы (текст и изображения)
+        
+        Args:
+            pdf_path: Путь к PDF файлу
+            selected_pages: Список номеров страниц для парсинга (1-based). 
+                          Если None - парсятся все страницы
+        
+        Returns:
+            Список ParsedElement в порядке их появления в PDF
+        """
+        parser = PDFParser(pdf_path)
+        try:
+            elements = parser.parse(selected_pages)
+            return elements
+        finally:
+            parser.cleanup()
     
     def convert(self, pdf_path: Path, output_dir: Path, selected_pages: Optional[List[int]] = None) -> list:
         """
