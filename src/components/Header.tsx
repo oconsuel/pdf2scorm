@@ -19,10 +19,10 @@ export function Header({ theme, onThemeChange, onHelpClick }: HeaderProps) {
             </div>
             <div>
               <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
-                SCORM 2004 Converter
+                Scorm2Pdf
               </h1>
               <p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400">
-                Настройка и генерация SCORM 2004 пакетов
+                Преобразование файлов PDF в формат SCORM-пакетов
               </p>
             </div>
           </div>

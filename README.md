@@ -1,230 +1,173 @@
-# PDF to SCORM 2004 Converter - Web Interface
+# PDF to SCORM 2004 Converter
 
-Современное веб-приложение для конвертации PDF документов в SCORM 2004 пакеты.
+[![Author](https://img.shields.io/badge/author-@oconsuel-blue)](https://github.com/oconsuel)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
+Веб-приложение для конвертации PDF документов в SCORM 2004 пакеты. Два режима работы: мгновенная конвертация и конструктор лекций с интеллектуальным извлечением структуры.
 
 ## Технологии
 
 ### Frontend
-- **React 18** + **TypeScript**
-- **Vite** - сборщик
-- **Tailwind CSS** - стилизация
-- **Lucide React** - иконки
-- **JSZip** - работа с ZIP архивами
+
+![React](https://img.shields.io/badge/React_18-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white)
 
 ### Backend
-- **Flask** - веб-фреймворк
-- **Flask-CORS** - поддержка CORS
-- **PyMuPDF (fitz)** - обработка PDF и извлечение текста/изображений
-- **Pillow** - обработка изображений
-- **pytesseract** + **Tesseract OCR** (опционально) - распознавание текста из изображений (fallback)
-- **opencv-python** - предобработка изображений для OCR
-- **numpy** - численные операции
 
-## Установка
+![Python](https://img.shields.io/badge/Python_3.8+-3776AB?logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-000000?logo=flask&logoColor=white)
+![PyMuPDF](https://img.shields.io/badge/PyMuPDF-009688)
+
+### Стандарты
+
+![SCORM](https://img.shields.io/badge/SCORM_2004_4th_Edition-FF6F00)
+
+## Быстрый старт
 
 ### Требования
+
 - **Node.js** 18+ и npm
 - **Python** 3.8+
-- **pip** для установки Python зависимостей
 
-### Frontend
+### Установка
 
 ```bash
+# Frontend
 npm install
-```
 
-### Backend
-
-```bash
+# Backend
 cd backend
 pip install -r requirements.txt
 ```
 
-#### Опционально: Установка Tesseract OCR
-
-Для улучшенного извлечения текста из изображений и формул рекомендуется установить Tesseract OCR:
-
-**macOS:**
-```bash
-# Если установлен Homebrew:
-brew install tesseract tesseract-lang
-
-# Если Homebrew не установлен, установите его сначала:
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-# Затем установите Tesseract:
-brew install tesseract tesseract-lang
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get update
-sudo apt-get install tesseract-ocr tesseract-ocr-rus tesseract-ocr-eng
-```
-
-**Windows:**
-1. Скачайте установщик с [GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
-2. Установите Tesseract
-3. Добавьте путь к Tesseract в переменную окружения PATH
-
-**Примечание:** Приложение будет работать и без Tesseract, но качество извлечения текста из изображений будет ниже.
-
-## Запуск
-
-### 1. Запустите Backend (в отдельном терминале)
+### Запуск
 
 ```bash
+# Терминал 1 — Backend
 cd backend
 python app.py
-```
+# → http://localhost:5001
 
-Backend будет доступен на `http://localhost:5001`
-
-### 2. Запустите Frontend (в другом терминале)
-
-```bash
+# Терминал 2 — Frontend
 npm run dev
+# → http://localhost:5173
 ```
 
-Приложение будет доступно по адресу `http://localhost:5173`
-
-**⚠️ Важно:** Backend должен быть запущен перед использованием приложения!
-
-## Сборка
+### Сборка
 
 ```bash
 npm run build
+# Собранные файлы → dist/
 ```
-
-Собранные файлы будут в директории `dist/`
 
 ## Функциональность
 
-### 1. Загрузка PDF файлов
-- Drag & Drop интерфейс
-- Поддержка множественной загрузки
-- Поддерживаемый формат: **PDF (.pdf)**
-- Выбор страниц для включения в SCORM пакет
-- Автоматическое открытие предпросмотра после загрузки
-- Управление файлами: удаление, установка Launch file
+### Быстрая конвертация
 
-### 2. Настройки SCORM 2004
+Drag & Drop PDF файла на главной странице — мгновенная конвертация в SCORM 2004 без настроек. Каждая страница PDF становится отдельным SCO.
 
-#### Прогресс и завершение
-- Запоминание последней страницы
-- Автосохранение при каждом переходе
-- Методы подсчёта прогресса (по экранам, по задачам, комбинированный)
-- Порог завершения курса
-- Критерии успешности
+- **PyMuPDF** — рендеринг страниц PDF в изображения
+- **SCORM 2004** — автоматическая генерация `imsmanifest.xml` с правилами секвенирования
+- Автоматическое выставление статуса `completed` и баллов при просмотре каждой страницы
 
-#### Предпочтения обучающегося
-- Настройки громкости, языка, скорости
-- Субтитры
-- Запоминание предпочтений
+### Конструктор лекций
 
-#### Стиль плеера и UX
-- Темы интерфейса (light, dark, auto)
-- Цветовая схема (основной цвет, акцентный цвет)
-- Высокий контраст
-- Крупный шрифт
-- Типы переходов между страницами
+Загрузка PDF с выбором страниц → интеллектуальное извлечение структуры → предпросмотр → генерация SCORM.
 
-### 3. Дополнительные возможности
+- **PyMuPDF** — извлечение текстовых spans и изображений из PDF
+- **Lecture Builder** — группировка элементов в абзацы, определение заголовков, формирование разделов и страниц
+- **SCORM Builder** — генерация HTML-страниц и SCORM 2004 пакета из модели лекции
+- Выбор конкретных страниц PDF для включения в пакет
+- Предпросмотр загруженных PDF
 
-- **Live Preview** - предпросмотр текущих настроек
-- **Package Preview** - предпросмотр сгенерированного пакета
-- **SCORM Player** - встроенный проигрыватель для тестирования пакета
-- **Тёмная/светлая тема** - переключение с плавной анимацией
-- **Адаптивный дизайн** - поддержка desktop, tablet, mobile
-- **Доступность** - ARIA-атрибуты, клавиатурная навигация
+### Настройки SCORM 2004
+
+| Категория | Возможности |
+|-----------|------------|
+| Прогресс и завершение | Запоминание последней страницы, автосохранение, методы подсчёта прогресса, порог завершения |
+| Предпочтения обучающегося | Громкость, язык, скорость, субтитры |
+| Стиль плеера | Темы (light / dark / auto), цветовая схема, высокий контраст, крупный шрифт |
+
+### Интерфейс
+
+- **React 18** + **TypeScript** — компонентная архитектура с типизацией
+- **Tailwind CSS** — адаптивный дизайн (desktop, tablet, mobile)
+- **Lucide React** — иконки
+- **JSZip** — клиентская работа с ZIP-архивами
+- Live Preview, Package Preview, встроенный SCORM Player
+- Тёмная/светлая тема, ARIA-атрибуты, клавиатурная навигация
 
 ## Структура проекта
 
 ```
 pdf2scorm/
-├── src/                    # Frontend (React + TypeScript)
-│   ├── components/         # React компоненты
-│   │   ├── settings/       # Компоненты вкладок настроек
-│   │   │   ├── ProgressCompletionTab.tsx
-│   │   │   ├── LearnerPreferencesTab.tsx
-│   │   │   └── PlayerStyleTab.tsx
-│   │   ├── Header.tsx      # Верхняя панель
-│   │   ├── Footer.tsx       # Нижняя панель
-│   │   ├── FileUpload.tsx  # Компонент загрузки файлов
-│   │   ├── PdfPreviewModal.tsx # Предпросмотр PDF с выбором страниц
-│   │   ├── SettingsPanel.tsx # Панель настроек
-│   │   ├── PackagePreviewModal.tsx # Модальное окно превью пакета
-│   │   ├── ScormPlayer.tsx # SCORM проигрыватель
-│   │   └── HelpModal.tsx   # Модальное окно помощи
-│   ├── utils/              # Утилиты
-│   │   ├── configPresets.ts # Конфигурация по умолчанию
-│   │   ├── fileUtils.ts    # Утилиты для работы с файлами
-│   │   └── scormGenerator.ts # Генератор SCORM пакетов
-│   ├── types.ts            # TypeScript типы
-│   ├── App.tsx             # Главный компонент
-│   └── main.tsx            # Точка входа
-├── backend/                # Backend (Flask)
-│   ├── app.py              # Flask API сервер
-│   ├── file_router.py      # Роутер для определения типа файла
-│   ├── scorm_builder.py    # Сборщик SCORM 2004 пакетов
-│   ├── converters/         # Конвертеры файлов
-│   │   ├── pdf_parser.py   # Парсер PDF (извлечение элементов)
-│   │   └── pdf_converter.py # Конвертер PDF (legacy, для page_based режима)
-│   ├── builders/            # Построители структуры
-│   │   └── lecture_builder.py # Построитель модели лекции
-│   └── models/              # Модели данных
-│       └── lecture_model.py # Модели Lecture, LectureSection, LecturePage, ContentBlock
-├── pdf_to_scorm.py         # Оригинальный скрипт конвертации PDF (legacy)
-├── requirements_scorm.txt  # Зависимости для pdf_to_scorm.py
-├── TROUBLESHOOTING.md      # Решение проблем
-└── README.md               # Этот файл
+├── index.html                  # Точка входа Vite
+├── package.json                # npm зависимости
+├── vite.config.ts              # Конфигурация Vite
+├── tsconfig.json               # Конфигурация TypeScript
+├── tailwind.config.js          # Конфигурация Tailwind CSS
+├── postcss.config.js           # Конфигурация PostCSS
+├── src/                        # Frontend (React + TypeScript)
+│   ├── App.tsx                 # Главный компонент + роутинг
+│   ├── main.tsx                # Точка входа
+│   ├── types.ts                # TypeScript типы
+│   ├── components/
+│   │   ├── LandingPage.tsx     # Главная: drag & drop + конструктор
+│   │   ├── Header.tsx
+│   │   ├── Footer.tsx
+│   │   ├── FileUpload.tsx      # Загрузка файлов
+│   │   ├── PdfPreviewModal.tsx # Предпросмотр PDF
+│   │   ├── SettingsPanel.tsx   # Панель настроек SCORM
+│   │   ├── LivePreview.tsx     # Предпросмотр в реальном времени
+│   │   ├── PackagePreviewModal.tsx
+│   │   ├── ScormPlayer.tsx     # Встроенный SCORM-плеер
+│   │   ├── HelpModal.tsx
+│   │   └── settings/           # Вкладки настроек
+│   ├── utils/
+│   │   ├── scormGenerator.ts   # Генератор SCORM пакетов
+│   │   ├── configPresets.ts    # Конфигурация по умолчанию
+│   │   └── fileUtils.ts
+│   └── styles/
+│       └── index.css
+├── backend/                    # Backend (Flask + Python)
+│   ├── app.py                  # Flask API сервер
+│   ├── pdf_parser.py           # Парсер PDF (PyMuPDF)
+│   ├── lecture_builder.py      # Построитель структуры лекции
+│   ├── scorm_builder.py        # Сборщик SCORM из модели лекции
+│   ├── simple_converter.py     # Быстрая конвертация PDF → SCORM
+│   └── models/
+│       └── lecture_model.py    # Модели данных
+└── API.md                      # Документация API
 ```
-
-## Backend API
-
-Backend реализован на Flask и предоставляет REST API для конвертации файлов в SCORM 2004 пакеты.
-
-### Endpoints
-
-- `GET /api/health` - проверка работоспособности API
-- `POST /api/convert` - конвертация файлов в SCORM пакет
-
-### Поддерживаемые форматы:
-- **PDF** - конвертируется в SCORM 2004 пакет
-  - Поддержка выбора страниц для включения в пакет
-  - Два режима конвертации:
-    - **lecture_based** (по умолчанию): интеллектуальное извлечение структуры лекции с заголовками, абзацами и изображениями
-    - **page_based**: каждая страница PDF становится отдельным SCO (Shareable Content Object)
-  - Автоматическая генерация навигации между страницами
-  - Сохранение изображений из PDF в структуру SCORM пакета
-
-## Решение проблем
-
-Подробные инструкции по решению проблем см. в файле [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ## Архитектура
 
-Приложение использует модульную архитектуру:
+```
+PDF → PDFParser → [ParsedElement...] → LectureBuilder → Lecture → SCORMBuilder → SCORM ZIP
+```
 
-1. **PDF Parser** (`backend/converters/pdf_parser.py`): Извлекает атомарные элементы (текстовые spans и изображения) из PDF
-2. **Lecture Builder** (`backend/builders/lecture_builder.py`): Группирует элементы в абзацы, определяет заголовки и формирует структуру лекции
-3. **SCORM Builder** (`backend/scorm_builder.py`): Генерирует SCORM 2004 пакет из модели лекции
+| Слой | Модуль | Описание |
+|------|--------|----------|
+| Парсинг | `pdf_parser.py` | Извлекает атомарные элементы (текст, изображения) из PDF через PyMuPDF |
+| Структурирование | `lecture_builder.py` | Группирует элементы в абзацы, определяет заголовки, формирует разделы |
+| Генерация | `scorm_builder.py` | Рендерит HTML-страницы и собирает SCORM 2004 пакет |
+| Быстрая конвертация | `simple_converter.py` | PDF → изображения → SCORM без семантического анализа |
 
 ### Модель данных
 
-- `ParsedElement`: Атомарный элемент из PDF (текстовый span или изображение)
-- `Lecture`: Модель лекции с метаданными (title, description, language, keywords)
-- `LectureSection`: Раздел лекции
-- `LecturePage`: Страница лекции с контентными блоками
-- `ContentBlock`: Блок контента (TextBlock, ImageBlock, ListBlock, TableBlock)
+- `ParsedElement` — атомарный элемент из PDF (текстовый span или изображение)
+- `Lecture` → `LectureSection` → `LecturePage` → `ContentBlock` (Text / Image / List / Table)
 
-## Примечания
+## API
 
-- Все настройки соответствуют стандарту SCORM 2004 4th Edition
-- По умолчанию используется режим `lecture_based` для интеллектуального извлечения структуры
-- Режим `page_based` доступен для обратной совместимости
-- SCORM пакеты генерируются с полной поддержкой всех настроек из интерфейса
-- Изображения автоматически сохраняются в папку `images/` в корне проекта
+Документация API вынесена в отдельный файл: **[API.md](API.md)**
+
+## Решение проблем
+
+См. **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**
 
 ## Лицензия
 
-MIT
+[MIT](LICENSE)

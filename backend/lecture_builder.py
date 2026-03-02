@@ -6,7 +6,6 @@
 Группирует элементы в абзацы, определяет заголовки и формирует структуру лекции.
 """
 
-import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import uuid
@@ -16,12 +15,6 @@ import shutil
 import base64
 import re
 
-# Добавляем родительскую директорию в путь для импорта
-parent_dir = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(parent_dir))
-
-# Импортируем модели
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from models.lecture_model import (
     Lecture, LectureSection, LecturePage,
     TextBlock, ImageBlock, ListBlock, TableBlock,
@@ -36,21 +29,14 @@ def build_lecture(elements: List[ParsedElement], output_images_dir: Optional[Pat
     Args:
         elements: Список ParsedElement (атомарные spans) в порядке их появления в PDF
         output_images_dir: Директория для сохранения изображений (если None, создается images/ в корне проекта)
-    
-    Returns:
-        Lecture - структурированная модель лекции
     """
     if not elements:
         raise ValueError("Список элементов пуст")
     
-    # Определяем директорию для изображений: если не указана, создаем images/ в корне проекта
     if output_images_dir is None:
-        # Корень проекта - на 3 уровня выше от этого файла (backend/builders/lecture_builder.py)
-        project_root = Path(__file__).parent.parent.parent
+        project_root = Path(__file__).parent.parent
         output_images_dir = project_root / "images"
-    # Создаем папку images/ если её нет
     output_images_dir.mkdir(parents=True, exist_ok=True)
-    
     # Обрабатываем изображения: сохраняем на диск и нормализуем пути
     _normalize_image_paths(elements, output_images_dir)
     

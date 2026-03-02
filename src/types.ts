@@ -43,7 +43,5 @@ export interface SCORMConfig {
   playerStyle: PlayerStyleConfig;
 }
 
-export type ConversionMode = 'page_based' | 'lecture_based';
-
 export type Theme = 'light' | 'dark';
 

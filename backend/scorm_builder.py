@@ -2,9 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Сборщик SCORM 2004 пакетов
-Поддерживает два режима:
-- page_based: старое поведение (из PDF-страниц)
-- lecture_based: новая логика (из модели Lecture)
+Режим lecture_based: из модели Lecture
 """
 
 import zipfile
@@ -12,15 +10,8 @@ import shutil
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from xml.dom import minidom
-import sys
-from typing import Literal, Optional
-import uuid
-import json
+from typing import Optional
 import logging
-
-# Добавляем родительскую директорию в путь для импорта
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent))
 
 from models.lecture_model import (
     Lecture,
@@ -38,28 +29,6 @@ class SCORMBuilder:
     
     def __init__(self):
         self.scorm_version = '2004'
-    
-    def build(self, processed_files: list, launch_file: str, config: dict, 
-              output_dir: Path, course_title: str, mode: Literal["page_based", "lecture_based"] = "page_based") -> Path:
-        """
-        Собирает SCORM 2004 пакет
-        
-        Args:
-            processed_files: Список обработанных файлов (для page_based режима)
-            launch_file: Имя launch файла (для page_based режима)
-            config: Конфигурация SCORM из фронтенда
-            output_dir: Директория для выходного файла
-            course_title: Название курса
-            mode: Режим работы ("page_based" или "lecture_based")
-        
-        Returns:
-            Путь к созданному ZIP файлу
-        """
-        if mode == "lecture_based":
-            raise ValueError("Для lecture_based режима используйте build_from_lecture()")
-        
-        # Старое поведение (page_based)
-        return self._build_page_based(processed_files, launch_file, config, output_dir, course_title)
     
     def build_from_lecture(self, lecture: Lecture, config: dict, output_dir: Path, parser_temp_dir: Optional[Path] = None) -> Path:
         """
@@ -206,88 +175,6 @@ class SCORMBuilder:
             if package_dir.exists():
                 shutil.rmtree(package_dir, ignore_errors=True)
     
-    def _build_page_based(self, processed_files: list, launch_file: str, config: dict, 
-                          output_dir: Path, course_title: str) -> Path:
-        """Старое поведение: сборка из обработанных файлов"""
-        # Создаём временную директорию для сборки
-        package_dir = output_dir / f'{course_title}_scorm_package'
-        if package_dir.exists():
-            shutil.rmtree(package_dir)
-        package_dir.mkdir(parents=True, exist_ok=True)
-        
-        try:
-            # Копируем все обработанные файлы в пакет
-            files_in_package = []
-            for file_info in processed_files:
-                source_path = file_info['path']
-                if source_path.exists():
-                    # Определяем относительный путь в пакете
-                    if 'images' in str(source_path):
-                        dest_path = package_dir / 'images' / source_path.name
-                        dest_path.parent.mkdir(exist_ok=True)
-                    elif 'media' in str(source_path):
-                        dest_path = package_dir / 'media' / source_path.name
-                        dest_path.parent.mkdir(exist_ok=True)
-                    else:
-                        dest_path = package_dir / source_path.name
-                    
-                    # Если это HTML файл с контентом, сохраняем обновлённый контент
-                    if file_info.get('html_content'):
-                        with open(dest_path, 'w', encoding='utf-8') as f:
-                            f.write(file_info['html_content'])
-                    else:
-                        shutil.copy2(source_path, dest_path)
-                    
-                    files_in_package.append({
-                        'path': dest_path.relative_to(package_dir),
-                        'type': file_info.get('type', 'resource'),
-                        'original_name': file_info.get('original_name', source_path.name),
-                    })
-            
-            # Создаём SCORM API wrapper
-            scorm_api_content = self._create_scorm_api_wrapper()
-            api_path = package_dir / 'SCORM_API_wrapper.js'
-            with open(api_path, 'w', encoding='utf-8') as f:
-                f.write(scorm_api_content)
-            
-            # Создаём manifest
-            manifest = self._create_manifest_2004(
-                files_in_package=files_in_package,
-                launch_file=launch_file,
-                course_title=course_title,
-                config=config
-            )
-            
-            # Сохраняем manifest
-            manifest_str = minidom.parseString(ET.tostring(manifest)).toprettyxml(
-                indent="  ", encoding=None
-            )
-            manifest_path = package_dir / 'imsmanifest.xml'
-            with open(manifest_path, 'w', encoding='utf-8') as f:
-                f.write(manifest_str)
-            
-            # Создаём ZIP архив
-            zip_path = output_dir / f'{course_title}_SCORM_2004.zip'
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                # Добавляем manifest
-                zipf.write(manifest_path, 'imsmanifest.xml')
-                
-                # Добавляем SCORM API wrapper
-                zipf.write(api_path, 'SCORM_API_wrapper.js')
-                
-                # Добавляем все файлы
-                for file_info in files_in_package:
-                    file_path = package_dir / file_info['path']
-                    if file_path.exists():
-                        zipf.write(file_path, str(file_info['path']))
-            
-            return zip_path
-            
-        finally:
-            # Удаляем временную директорию
-            if package_dir.exists():
-                shutil.rmtree(package_dir, ignore_errors=True)
-    
     def _render_page_html(self, page: LecturePage, all_pages: list, config: dict) -> str:
         """
         Рендерит HTML страницу из LecturePage и ContentBlock
@@ -313,17 +200,13 @@ class SCORMBuilder:
         # Получаем настройки из config
         player_style = config.get('playerStyle', {})
         primary_color = player_style.get('primaryColor', '#0ea5e9')
-        theme = player_style.get('theme', 'auto')
-        
-        # Генерируем JSON конфигурацию заранее
-        config_json = self._generate_config_json(config)
         
         html = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{self._clean_html_from_text(page.title)}</title>
+    <title>Страница {current_index + 1}</title>
     <style>
         * {{
             margin: 0;
@@ -346,18 +229,6 @@ class SCORMBuilder:
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             overflow: hidden;
-        }}
-        
-        .header {{
-            background: {primary_color};
-            color: white;
-            padding: 20px;
-            text-align: center;
-        }}
-        
-        .header h1 {{
-            font-size: 24px;
-            margin: 0;
         }}
         
         .content {{
@@ -478,189 +349,55 @@ class SCORMBuilder:
         
     </style>
     <script src="SCORM_API_wrapper.js"></script>
-    <script>
-        // Инжектируем SCORM конфигурацию
-        var scormConfigStr = {json.dumps(config_json)};
-        window.SCORM_CONFIG = JSON.parse(scormConfigStr);
-        
-        // Проверяем, что pipwerks загружен
-        if (typeof pipwerks === 'undefined') {{
-            console.error('SCORM API Wrapper не загружен!');
-            // Создаем заглушку для предотвращения ошибок
-            window.pipwerks = {{
-                SCORM: {{
-                    version: null,
-                    API: {{ isPresent: false }},
-                    init: function() {{ return false; }},
-                    get: function() {{ return ''; }},
-                    set: function() {{ return false; }},
-                    save: function() {{ return false; }},
-                    quit: function() {{ return false; }}
-                }}
-            }};
-        }}
-    </script>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>{self._clean_html_from_text(page.title)}</h1>
-        </div>
-        
         <div class="content">
             {content_html}
         </div>
     </div>
     
     <script>
-        // Проверяем доступность pipwerks перед использованием
-        if (typeof pipwerks === 'undefined' || !pipwerks.SCORM) {{
-            console.error('SCORM API недоступен');
-            // Используем заглушку, если pipwerks не загружен
-            var scorm = {{
-                version: null,
-                API: {{ isPresent: false }},
-                init: function() {{ return false; }},
-                get: function() {{ return ''; }},
-                set: function() {{ return false; }},
-                save: function() {{ return false; }},
-                quit: function() {{ return false; }}
-            }};
-        }} else {{
-            var scorm = pipwerks.SCORM;
+    (function() {{
+        var scorm = (typeof pipwerks !== 'undefined' && pipwerks.SCORM) ? pipwerks.SCORM : null;
+        if (!scorm) return;
+
+        var done = false;
+        var started = Date.now();
+
+        function init() {{
+            if (done) return;
+            scorm.version = "2004";
+            if (!scorm.init()) return;
+            done = true;
+            started = Date.now();
+
+            scorm.set("cmi.completion_status", "completed");
+            scorm.set("cmi.success_status", "passed");
+            scorm.set("cmi.score.scaled", "1");
+            scorm.set("cmi.score.raw", "100");
+            scorm.set("cmi.score.min", "0");
+            scorm.set("cmi.score.max", "100");
+            scorm.set("cmi.progress_measure", "1");
+            scorm.set("cmi.location", "{current_index + 1}");
+            scorm.set("cmi.exit", "suspend");
+            scorm.save();
         }}
-        var pageNum = {current_index + 1};
-        var totalPages = {len(all_pages)};
-        var sessionStartTime = null;
-        var initialized = false;
-        var scormVersion = "2004";
-        
-        function getStatusField() {{
-            return scormVersion === "2004" ? "cmi.completion_status" : "cmi.core.lesson_status";
-        }}
-        
-        function getLocationField() {{
-            return scormVersion === "2004" ? "cmi.location" : "cmi.core.lesson_location";
-        }}
-        
-        function getSuspendDataField() {{
-            return scormVersion === "2004" ? "cmi.suspend_data" : "cmi.suspend_data";
-        }}
-        
-        function initializeSCORM() {{
-            if (initialized) return;
-            
-            // Проверяем доступность SCORM API
-            if (!scorm || !scorm.init) {{
-                console.warn('SCORM API недоступен, работаем в режиме предпросмотра');
-                initialized = false;
-                return;
-            }}
-            
-            scorm.version = scormVersion;
-            var initResult = scorm.init();
-            
-            if (initResult) {{
-                initialized = true;
-                sessionStartTime = new Date().getTime();
-                
-                var currentStatus = scorm.get(getStatusField());
-                if (!currentStatus || currentStatus === "" || currentStatus === "null") {{
-                    scorm.set(getStatusField(), "unknown");
-                }}
-                
-                if (!currentStatus || currentStatus === "" || currentStatus === "null" ||
-                    currentStatus === "not attempted" || currentStatus === "unknown") {{
-                    scorm.set(getStatusField(), "incomplete");
-                }}
-                
-                loadProgress();
-                saveProgress();
-            }}
-        }}
-        
-        function loadProgress() {{
-            var rememberLastPage = true;
-            if (window.SCORM_CONFIG && window.SCORM_CONFIG.progressCompletion) {{
-                rememberLastPage = window.SCORM_CONFIG.progressCompletion.rememberLastPage;
-            }}
-            
-            if (!rememberLastPage) {{
-                return;
-            }}
-        }}
-        
-        function saveProgress() {{
-            if (!scorm || !scorm.API || !scorm.API.isPresent || !initialized) return;
-            
+
+        window.addEventListener("load", init);
+
+        window.addEventListener("beforeunload", function() {{
+            if (!done) return;
             try {{
-                var progressData = {{
-                    visitedPages: [],
-                    lastPage: pageNum
-                }};
-                
-                var suspendData = scorm.get(getSuspendDataField());
-                if (suspendData && suspendData !== "" && suspendData !== "null") {{
-                    try {{
-                        var existingProgress = JSON.parse(suspendData);
-                        if (existingProgress.visitedPages) {{
-                            progressData.visitedPages = existingProgress.visitedPages;
-                        }}
-                    }} catch (e) {{
-                        // Игнорируем ошибки парсинга
-                    }}
-                }}
-                
-                if (!progressData.visitedPages.includes(pageNum)) {{
-                    progressData.visitedPages.push(pageNum);
-                }}
-                
-                scorm.set(getLocationField(), String(pageNum));
-                scorm.set(getSuspendDataField(), JSON.stringify(progressData));
-                
-                var visitedCount = progressData.visitedPages.length;
-                var completionThreshold = (window.SCORM_CONFIG && window.SCORM_CONFIG.progressCompletion && window.SCORM_CONFIG.progressCompletion.completionThreshold) || 80;
-                var progressMethod = (window.SCORM_CONFIG && window.SCORM_CONFIG.progressCompletion && window.SCORM_CONFIG.progressCompletion.progressMethod) || 'screens';
-                var progress = 0;
-                
-                if (progressMethod === 'screens') {{
-                    progress = (visitedCount / totalPages) * 100;
-                }} else if (progressMethod === 'combined') {{
-                    progress = (visitedCount / totalPages) * 50;
-                }}
-                
-                var currentStatus = scorm.get(getStatusField());
-                if (progress >= completionThreshold || visitedCount === totalPages) {{
-                    scorm.set(getStatusField(), "completed");
-                }} else if (currentStatus !== "completed" && visitedCount > 0) {{
-                    scorm.set(getStatusField(), "incomplete");
-                }}
-                
-                var currentTime = new Date().getTime();
-                var sessionTime = Math.round((currentTime - sessionStartTime) / 1000);
-                scorm.set("cmi.session_time", "PT" + sessionTime + "S");
-                
+                var t = Math.floor((Date.now() - started) / 1000);
+                var h = Math.floor(t / 3600);
+                var m = Math.floor((t % 3600) / 60);
+                var s = t % 60;
+                scorm.set("cmi.session_time", "PT" + h + "H" + m + "M" + s + "S");
                 scorm.save();
-            }} catch (e) {{
-                // Игнорируем ошибки сохранения
-            }}
-        }}
-        
-        window.addEventListener('load', function() {{
-            initializeSCORM();
-            setTimeout(function() {{
-                if (initialized) {{
-                    saveProgress();
-                }}
-            }}, 500);
+            }} catch(e) {{}}
         }});
-        
-        window.addEventListener('beforeunload', function() {{
-            if (initialized) {{
-                saveProgress();
-                scorm.quit();
-            }}
-        }});
+    }})();
     </script>
 </body>
 </html>"""
@@ -749,37 +486,6 @@ class SCORMBuilder:
         
         return ''
     
-    def _clean_html_from_text(self, text: str) -> str:
-        """Удаляет HTML теги из текста, оставляя только чистый текст"""
-        if not text:
-            return ""
-        import re
-        # Удаляем все HTML теги
-        clean_text = re.sub(r'<[^>]+>', '', text)
-        # Декодируем HTML entities
-        import html
-        clean_text = html.unescape(clean_text)
-        # Убираем лишние пробелы
-        clean_text = ' '.join(clean_text.split())
-        return clean_text
-    
-    def _generate_config_json(self, config: dict) -> str:
-        """Генерирует безопасный JSON для JavaScript с правильным экранированием"""
-        import json
-        # Очищаем config от None значений и несериализуемых типов
-        clean_config = {}
-        for key, value in config.items():
-            if value is None:
-                continue
-            if isinstance(value, dict):
-                clean_config[key] = {k: v for k, v in value.items() if v is not None}
-            else:
-                clean_config[key] = value
-        
-        # Генерируем JSON
-        json_str = json.dumps(clean_config, ensure_ascii=False)
-        return json_str
-    
     def _create_manifest_from_lecture(self, lecture: Lecture, page_files: list, 
                                      image_files: list, config: dict) -> ET.Element:
         """
@@ -821,6 +527,13 @@ class SCORMBuilder:
         title = ET.SubElement(organization, 'title')
         title.text = lecture.title
         
+        org_seq = ET.SubElement(organization, 'imsss:sequencing')
+        ctrl = ET.SubElement(org_seq, 'imsss:controlMode')
+        ctrl.set('choice', 'true')
+        ctrl.set('choiceExit', 'true')
+        ctrl.set('flow', 'true')
+        ctrl.set('forwardOnly', 'false')
+        
         # Resources
         resources = ET.SubElement(manifest, 'resources')
         
@@ -829,29 +542,35 @@ class SCORMBuilder:
         page_counter = 0
         
         for section in lecture.sections:
-            # Item для раздела
             section_item_id = f'SECTION_{section.id}'
             section_item = ET.SubElement(organization, 'item')
             section_item.set('identifier', section_item_id)
             section_title = ET.SubElement(section_item, 'title')
             section_title.text = section.title
             
-            # Применяем настройки sequencing для раздела
-            if config:
-                self._apply_sequencing_config(section_item, config, section.order == 1)
+            # Sequencing on section to allow choice/flow among its children
+            sec_seq = ET.SubElement(section_item, 'imsss:sequencing')
+            sec_ctrl = ET.SubElement(sec_seq, 'imsss:controlMode')
+            sec_ctrl.set('choice', 'true')
+            sec_ctrl.set('choiceExit', 'true')
+            sec_ctrl.set('flow', 'true')
+            sec_ctrl.set('forwardOnly', 'false')
             
-            # Создаём items для страниц раздела
             for page in section.pages:
                 page_counter += 1
                 page_item_id = f'PAGE_{page.id}'
                 resource_id = f'RES_PAGE_{page_counter}'
                 
-                # Item для страницы
                 page_item = ET.SubElement(section_item, 'item')
                 page_item.set('identifier', page_item_id)
                 page_item.set('identifierref', resource_id)
                 page_title = ET.SubElement(page_item, 'title')
-                page_title.text = self._clean_html_from_text(page.title)
+                page_title.text = f'Страница {page_counter}'
+                
+                item_seq = ET.SubElement(page_item, 'imsss:sequencing')
+                dc = ET.SubElement(item_seq, 'imsss:deliveryControls')
+                dc.set('completionSetByContent', 'true')
+                dc.set('objectiveSetByContent', 'true')
                 
                 # Resource для страницы
                 page_file = next((pf for pf in page_files if pf['page'].id == page.id), None)
@@ -877,277 +596,87 @@ class SCORMBuilder:
         
         return manifest
     
-    def _create_manifest_2004(self, files_in_package: list, launch_file: str,
-                              course_title: str, config: dict) -> ET.Element:
-        """Создаёт SCORM 2004 manifest (старое поведение для page_based режима)"""
-        manifest = ET.Element('manifest')
-        manifest.set('identifier', f"SCORM_{course_title.replace(' ', '_')}")
-        manifest.set('version', '1')
-        manifest.set('xmlns', 'http://www.imsglobal.org/xsd/imscp_v1p1')
-        manifest.set('xmlns:adlcp', 'http://www.adlnet.org/xsd/adlcp_v1p3')
-        manifest.set('xmlns:adlseq', 'http://www.adlnet.org/xsd/adlseq_v1p3')
-        manifest.set('xmlns:adlnav', 'http://www.adlnet.org/xsd/adlnav_v1p3')
-        manifest.set('xmlns:imsss', 'http://www.imsglobal.org/xsd/imsss')
-        manifest.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
-        manifest.set('xsi:schemaLocation', 
-                    'http://www.imsglobal.org/xsd/imscp_v1p1 imscp_v1p1.xsd '
-                    'http://www.adlnet.org/xsd/adlcp_v1p3 adlcp_v1p3.xsd '
-                    'http://www.adlnet.org/xsd/adlseq_v1p3 adlseq_v1p3.xsd '
-                    'http://www.adlnet.org/xsd/adlnav_v1p3 adlnav_v1p3.xsd '
-                    'http://www.imsglobal.org/xsd/imsss imsss.xsd')
-        
-        # Metadata
-        metadata = ET.SubElement(manifest, 'metadata')
-        schema = ET.SubElement(metadata, 'schema')
-        schema.text = 'ADL SCORM'
-        schemaversion = ET.SubElement(metadata, 'schemaversion')
-        schemaversion.text = '2004 4th Edition'
-        
-        # Organizations
-        organizations = ET.SubElement(manifest, 'organizations')
-        organizations.set('default', 'TOC1')
-        organization = ET.SubElement(organizations, 'organization')
-        organization.set('identifier', 'TOC1')
-        title = ET.SubElement(organization, 'title')
-        title.text = course_title
-        
-        # Resources
-        resources = ET.SubElement(manifest, 'resources')
-        
-        # Группируем файлы по SCO
-        sco_files = [f for f in files_in_package if f['type'] == 'sco']
-        resource_files = [f for f in files_in_package if f['type'] == 'resource']
-        
-        # Если нет SCO файлов, создаём один из launch файла
-        if not sco_files:
-            launch_file_path = None
-            for f in files_in_package:
-                if launch_file in str(f['path']) or f['original_name'] == launch_file or f['path'].name == launch_file:
-                    launch_file_path = f['path']
-                    break
-            
-            if launch_file_path:
-                sco_files = [{
-                    'path': launch_file_path,
-                    'original_name': launch_file_path.name,
-                }]
-            else:
-                html_files = [f for f in files_in_package if str(f['path']).endswith('.html')]
-                if html_files:
-                    html_files.sort(key=lambda x: str(x['path']))
-                    launch_file_path = html_files[0]['path']
-                    sco_files = [{
-                        'path': launch_file_path,
-                        'original_name': launch_file_path.name,
-                    }]
-        
-        # Сортируем SCO файлы по номеру страницы
-        def get_page_number(file_path):
-            import re
-            path_str = str(file_path)
-            match = re.search(r'page_(\d+)\.html', path_str)
-            if match:
-                return int(match.group(1))
-            return float('inf')
-        
-        sco_files_sorted = sorted(sco_files, key=lambda x: get_page_number(x['path']))
-        
-        # Создаём items и resources для SCO
-        for idx, sco_file in enumerate(sco_files_sorted, 1):
-            item_id = f'ITEM_SCO_{idx}'
-            resource_id = f'RES_SCO_{idx}'
-            
-            is_launch = (str(sco_file['path']) == launch_file or 
-                        sco_file['path'].name == launch_file or
-                        (idx == 1 and launch_file in str(sco_file['path'])))
-            
-            # Item
-            item = ET.SubElement(organization, 'item')
-            item.set('identifier', item_id)
-            item.set('identifierref', resource_id)
-            item_title = ET.SubElement(item, 'title')
-            item_title.text = sco_file.get('original_name', str(sco_file['path']))
-            
-            # Применяем настройки sequencing
-            if config:
-                self._apply_sequencing_config(item, config, is_launch)
-            
-            # Resource
-            resource = ET.SubElement(resources, 'resource')
-            resource.set('identifier', resource_id)
-            resource.set('type', 'webcontent')
-            resource.set('adlcp:scormType', 'sco')
-            resource.set('href', str(sco_file['path']))
-            
-            # Файлы ресурса
-            file_elem = ET.SubElement(resource, 'file')
-            file_elem.set('href', str(sco_file['path']))
-            
-            file_scorm = ET.SubElement(resource, 'file')
-            file_scorm.set('href', 'SCORM_API_wrapper.js')
-            
-            for res_file in resource_files:
-                file_res = ET.SubElement(resource, 'file')
-                file_res.set('href', str(res_file['path']))
-        
-        return manifest
-    
-    def _apply_sequencing_config(self, item: ET.Element, config: dict, is_first: bool):
-        """Применяет настройки sequencing и completion к item"""
-        # Completion threshold
-        if config.get('progressCompletion', {}).get('completionThreshold'):
-            threshold = config.get('progressCompletion', {}).get('completionThreshold', 80)
-            if threshold > 0:
-                sequencing = item.find('adlseq:sequencing')
-                if sequencing is None:
-                    sequencing = ET.SubElement(item, 'adlseq:sequencing')
-                
-                rollup_rules = ET.SubElement(sequencing, 'adlseq:rollupRules')
-                rollup_condition = ET.SubElement(rollup_rules, 'adlseq:rollupCondition')
-                rollup_condition.set('condition', 'completed')
-                
-                objectives = ET.SubElement(sequencing, 'adlseq:objectives')
-                primary_objective = ET.SubElement(objectives, 'adlseq:primaryObjective')
-                primary_objective.set('satisfiedByMeasure', 'true')
-                
-                min_normalized_measure = ET.SubElement(primary_objective, 'adlseq:minNormalizedMeasure')
-                min_normalized_measure.text = str(threshold / 100.0)
-    
     def _create_scorm_api_wrapper(self) -> str:
         """Создаёт SCORM API wrapper"""
-        return """/* SCORM API Wrapper - pipwerks SCORM wrapper for SCORM 1.2 and 2004 */
-var pipwerks = {};
-pipwerks.SCORM = {
-    version: null,
-    handleCompletionStatus: true,
-    handleExitMode: true,
-    API: { handle: null, isPresent: false },
-    connection: { isActive: false },
-    data: { completionStatus: null, exitStatus: null },
-    debug: { isActive: false },
-    
-    init: function() {
-        var API = this.getAPI();
-        if (API) {
-            this.API.handle = API.handle;
-            this.API.isPresent = true;
-            this.connection.isActive = true;
-            this.data.completionStatus = this.get("cmi.core.lesson_status");
-            this.data.exitStatus = this.get("cmi.core.exit");
+        return r"""var pipwerks={};
+pipwerks.SCORM={
+    version:null,
+    API:{handle:null,isPresent:false},
+    connection:{isActive:false},
+
+    init:function(){
+        var a=this.getAPI();
+        if(!a) return false;
+        this.API.handle=a.handle;
+        this.API.isPresent=true;
+        var ok;
+        if(this.version==="2004"){
+            ok=this.API.handle.Initialize("");
+        }else{
+            ok=this.API.handle.LMSInitialize("");
+        }
+        if(ok==="true"||ok===true){
+            this.connection.isActive=true;
             return true;
         }
         return false;
     },
-    
-    getAPI: function() {
-        var API = null,
-            findAttempts = 0,
-            findAttemptLimit = 500;
-        
-        while ((!window.API && !window.API_1484_11) && (findAttempts < findAttemptLimit)) {
-            if (window.parent && window.parent != window) {
-                try {
-                    findAttempts++;
-                    if (window.parent.API) {
-                        API = { handle: window.parent.API, version: "1.2" };
-                    } else if (window.parent.API_1484_11) {
-                        API = { handle: window.parent.API_1484_11, version: "2004" };
-                    }
-                } catch (e) {}
-            }
-            if (!API) {
-                var scorm = window;
-                while (scorm.parent && scorm.parent != scorm) {
-                    try {
-                        scorm = scorm.parent;
-                        if (scorm.API) {
-                            API = { handle: scorm.API, version: "1.2" };
-                            break;
-                        } else if (scorm.API_1484_11) {
-                            API = { handle: scorm.API_1484_11, version: "2004" };
-                            break;
-                        }
-                    } catch (e) {}
-                }
-            }
+
+    getAPI:function(){
+        var w=window,a=null,n=0;
+        while(!a&&n<500){
+            try{
+                if(w.API_1484_11) a={handle:w.API_1484_11,version:"2004"};
+                else if(w.API) a={handle:w.API,version:"1.2"};
+            }catch(e){}
+            if(!a&&w.parent&&w.parent!==w){w=w.parent;n++;}
+            else break;
         }
-        return API;
-    },
-    
-    get: function(parameter) {
-        var value = null;
-        if (this.API.isPresent) {
-            if (this.version === "2004") {
-                value = this.API.handle.GetValue(parameter);
-                if (this.API.handle.GetLastError() != 0) {
-                    return null;
+        if(!a){
+            try{
+                var op=window.opener;
+                while(op&&!a&&n<500){
+                    if(op.API_1484_11) a={handle:op.API_1484_11,version:"2004"};
+                    else if(op.API) a={handle:op.API,version:"1.2"};
+                    if(!a&&op.parent&&op.parent!==op){op=op.parent;n++;}
+                    else break;
                 }
-            } else {
-                value = this.API.handle.LMSGetValue(parameter);
-                var errorCode = this.API.handle.LMSGetLastError();
-                if (errorCode != 0) {
-                    return null;
-                }
-            }
+            }catch(e){}
         }
-        return String(value);
+        return a;
     },
-    
-    set: function(parameter, value) {
-        if (this.API.isPresent) {
-            if (this.version === "2004") {
-                var result = this.API.handle.SetValue(parameter, value);
-                if (result) {
-                    if (this.API.handle.Commit("") != "true") {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            } else {
-                var result = this.API.handle.LMSSetValue(parameter, value);
-                if (result) {
-                    if (this.API.handle.LMSCommit("") != "true") {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            }
-            return true;
-        }
-        return false;
+
+    get:function(p){
+        if(!this.connection.isActive) return "";
+        try{
+            if(this.version==="2004") return String(this.API.handle.GetValue(p));
+            return String(this.API.handle.LMSGetValue(p));
+        }catch(e){return "";}
     },
-    
-    save: function() {
-        return this.commit();
+
+    set:function(p,v){
+        if(!this.connection.isActive) return false;
+        try{
+            if(this.version==="2004") return this.API.handle.SetValue(p,String(v));
+            return this.API.handle.LMSSetValue(p,String(v));
+        }catch(e){return false;}
     },
-    
-    commit: function() {
-        if (this.API.isPresent) {
-            if (this.version === "2004") {
-                return this.API.handle.Commit("");
-            } else {
-                return this.API.handle.LMSCommit("");
-            }
-        }
-        return false;
+
+    save:function(){
+        if(!this.connection.isActive) return false;
+        try{
+            if(this.version==="2004") return this.API.handle.Commit("");
+            return this.API.handle.LMSCommit("");
+        }catch(e){return false;}
     },
-    
-    quit: function() {
-        if (this.API.isPresent) {
-            if (this.version === "2004") {
-                return this.API.handle.Terminate("");
-            } else {
-                return this.API.handle.LMSFinish("");
-            }
-        }
-        return false;
+
+    quit:function(){
+        if(!this.connection.isActive) return false;
+        this.connection.isActive=false;
+        try{
+            if(this.version==="2004") return this.API.handle.Terminate("");
+            return this.API.handle.LMSFinish("");
+        }catch(e){return false;}
     }
 };
-
-pipwerks.UTILS = {
-    trace: function(msg) {
-        // Отключено для production
-    }
-};"""
+pipwerks.UTILS={trace:function(m){if(console&&console.log)console.log(m)}};"""
