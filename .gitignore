@@ -107,3 +107,6 @@ images/
 # Temporary files from PDF processing
 temp/
 tmp/
+
+# Lecture pipeline debug output
+backend/lecture/process_result/
