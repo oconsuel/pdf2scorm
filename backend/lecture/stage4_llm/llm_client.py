@@ -95,9 +95,12 @@ class LLMClient:
         items_json = json.dumps(document_items, ensure_ascii=False, indent=0)
         lang_instruction = "Respond in Russian." if language == "ru" else "Respond in English."
         prompt = f"""You are analyzing a SCIENTIFIC ARTICLE and building a LECTURE structure from it.
-The input is a structured document with headers (type "header", header_level 1/2/3) and paragraphs (type "paragraph").
-Headers mark section boundaries (Introduction, Methods, Results, Discussion, Conclusion).
-Your task is to create a lecture slide structure that groups content logically.
+The input is a structured document with:
+- type "section" — section boundary (title). RESPECT section boundaries: do NOT mix content from different sections on the same slide.
+- type "paragraph" — text block
+- type "image" — figure/diagram
+
+Your task is to create a lecture slide structure that groups content logically within each section.
 
 Input document:
 {items_json}
@@ -108,7 +111,8 @@ Rules for each slide:
 - Image optional, only if relevant to the slide content
 - Maximum 300–400 characters of text per slide
 - Do not repeat PDF page structure; merge related content into fewer slides
-- Prefer starting new slides at header boundaries (H1, H2)
+- Prefer starting new slides at section boundaries (type "section")
+- Never put paragraphs from different sections on the same slide
 
 Create at most 3–4 slides per chunk. Fewer slides is better if content fits.
 
@@ -125,7 +129,7 @@ Return JSON only, no other text. Format:
 }}
 paragraph_indices = indices of paragraph items (type "paragraph") to include.
 image_indices = indices of image items to include.
-Use the "idx" field from each input item. Do not include header indices in paragraph_indices."""
+Use the "idx" field from each input item. Use paragraph indices (type "paragraph") and image indices (type "image"). Do not use section indices (type "section") in paragraph_indices or image_indices."""
 
         logging.info("LLM generate_slide_structure: отправлено %d элементов", len(document_items))
         response = self._call(

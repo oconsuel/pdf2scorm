@@ -12,8 +12,6 @@ from typing import Literal, Any, Optional, List, Tuple
 from enum import Enum
 
 
-# --- Pipeline models (new architecture) ---
-
 @dataclass
 class DocumentBlock:
     """Блок документа, извлечённый при layout parsing. Минимальная единица — строка (line)."""
@@ -38,6 +36,18 @@ class ParagraphBlock:
     is_bold: bool = False
     lines_count: int = 1
     header_level: int = 0  # 0 = не заголовок, 1 = H1, 2 = H2, 3 = H3
+    element_type: str = "paragraph"  # header | paragraph | caption (от unstructured)
+    is_header: bool = False  # заголовок раздела (после header_normalizer)
+
+
+@dataclass
+class DocumentSection:
+    """Раздел документа после section_builder (до слайдов)."""
+    id: str
+    title: str
+    paragraphs: List["ParagraphBlock"] = field(default_factory=list)
+    images: List = field(default_factory=list)  # LinkedImage после image_linker
+    page_numbers: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -72,36 +82,12 @@ class Section:
     order: int = 0
 
 
-# --- Legacy / SCORM models (сохраняем для совместимости) ---
-
 class ContentBlockType(str, Enum):
     """Типы блоков контента"""
     TEXT = "text"
     IMAGE = "image"
     LIST = "list"
     TABLE = "table"
-
-
-@dataclass
-class ParsedElement:
-    """Элемент, извлеченный из PDF при парсинге"""
-    type: Literal["text", "image"]
-    text: Optional[str] = None
-    image_path: Optional[str] = None
-    font_size: float = 12.0
-    is_bold: bool = False
-    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # (x0, y0, x1, y1)
-    page_number: int = 0  # Номер страницы PDF (1-based)
-    order: int = 0  # Порядок элемента на странице
-    
-    def __post_init__(self):
-        """Валидация типа элемента"""
-        if self.type not in ["text", "image"]:
-            raise ValueError(f"Invalid parsed element type: {self.type}")
-        if self.type == "text" and not self.text:
-            raise ValueError("Text element must have text content")
-        if self.type == "image" and not self.image_path:
-            raise ValueError("Image element must have image_path")
 
 
 @dataclass

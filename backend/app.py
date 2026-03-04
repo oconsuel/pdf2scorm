@@ -129,21 +129,33 @@ def convert_to_scorm():
         # Parse PDFs → build Lecture → generate SCORM
         all_parsed_elements = []
         parser_temp_dir = None
+        pdf_paths = []
+        pdf_selected_pages = []
 
         for file_info in uploaded_files:
             if file_info['name'].lower().endswith('.pdf'):
-                parser = PDFParser(file_info['path'])
+                pdf_path = file_info['path']
+                selected_pages = file_info.get('selected_pages')
+                parser = PDFParser(pdf_path)
                 try:
-                    parsed_elements = parser.parse(file_info.get('selected_pages'))
+                    parsed_elements = parser.parse(selected_pages)
                     all_parsed_elements.extend(parsed_elements)
                     parser_temp_dir = parser.temp_dir
+                    pdf_paths.append(pdf_path)
+                    pdf_selected_pages.append(selected_pages)
                 except Exception:
                     pass
 
         if not all_parsed_elements:
             return jsonify({'error': 'No elements extracted from PDF'}), 400
 
-        lecture = build_lecture(all_parsed_elements, output_images_dir=None)
+        lecture = build_lecture(
+            all_parsed_elements,
+            pdf_paths=pdf_paths,
+            parser_temp_dir=parser_temp_dir,
+            output_images_dir=None,
+            pdf_selected_pages=pdf_selected_pages if pdf_selected_pages else None,
+        )
 
         if config.get('title'):
             lecture.title = config['title']

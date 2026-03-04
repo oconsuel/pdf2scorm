@@ -14,7 +14,6 @@ from .lecture_model import (
     ListBlock,
     TableBlock,
     ContentBlockType,
-    ParsedElement,
 )
 
 __all__ = [
@@ -32,6 +31,5 @@ __all__ = [
     'ListBlock',
     'TableBlock',
     'ContentBlockType',
-    'ParsedElement',
 ]
 

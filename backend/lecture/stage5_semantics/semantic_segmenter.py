@@ -12,9 +12,14 @@ import re
 import uuid
 from typing import List, Optional, Tuple
 
-from ..models.lecture_model import ParagraphBlock, LinkedImage, Slide, Section
-from ..llm.llm_client import LLMClient
-from ..layout.block_normalizer import SCIENTIFIC_HEADERS
+from ..models.lecture_model import (
+    ParagraphBlock,
+    LinkedImage,
+    Slide,
+    Section,
+    DocumentSection,
+)
+from ..stage4_llm.llm_client import LLMClient
 
 MAX_PARAGRAPH_CHARS = 300
 MAX_ITEMS_PER_REQUEST = 20
@@ -61,36 +66,21 @@ def _compress_paragraph_text(text: str) -> str:
     return t[:MAX_PARAGRAPH_CHARS] if len(t) > MAX_PARAGRAPH_CHARS else t
 
 
-def _is_scientific_section(text: str) -> bool:
-    """Проверяет, является ли текст научным разделом (Введение, Методы и т.д.)."""
-    if not text:
-        return False
-    t = text.strip().lower()[:80]
-    return any(h in t for h in SCIENTIFIC_HEADERS)
-
-
 def _split_into_chunks(
     items: List[dict],
     size_min: int = CHUNK_SIZE_MIN,
     size_max: int = CHUNK_SIZE_MAX,
 ) -> List[List[dict]]:
-    """Разбивает элементы на чанки с учётом структуры: H1/H2 и научные разделы как границы."""
+    """Разбивает элементы на чанки. Граница раздела (type=section) — предпочтительное место разбиения."""
     if not items:
         return []
     chunks: List[List[dict]] = []
     current: List[dict] = []
 
-    for i, item in enumerate(items):
-        is_boundary = False
-        itype = item.get("type", "")
-        text = item.get("text", "") or ""
-        hl = item.get("header_level", 0)
-        if itype == "header":
-            is_boundary = hl in (1, 2) or _is_scientific_section(text)
-        elif itype == "paragraph" and (hl in (1, 2) or _is_scientific_section(text)):
-            is_boundary = True
+    for item in items:
+        is_section_start = item.get("type") == "section"
 
-        if is_boundary and current and len(current) >= size_min:
+        if is_section_start and current and len(current) >= size_min:
             chunks.append(current)
             current = []
 
@@ -204,6 +194,80 @@ def _postprocess_sections(sections: List[Section]) -> List[Section]:
     return result
 
 
+def _build_sections_from_llm_slides(
+    all_slides_data: List[dict],
+    para_by_idx: dict,
+    img_by_idx: dict,
+    section_by_para_id: dict,
+    document_sections: List[DocumentSection],
+) -> List[Section]:
+    """Строит Section[] из ответа LLM, группируя слайды по разделам документа."""
+    doc_sec_by_id = {ds.id: ds for ds in document_sections}
+    out_sections: dict = {}  # section_id -> Section
+    section_order: List[str] = [ds.id for ds in document_sections]
+
+    for ds in document_sections:
+        if ds.id not in out_sections:
+            out_sections[ds.id] = Section(
+                id=ds.id,
+                title=ds.title,
+                slides=[],
+                order=len(out_sections) + 1,
+            )
+
+    for s in all_slides_data:
+        title = (s.get("title") or "Страница").strip()[:100]
+        para_indices = s.get("paragraph_indices", [])
+        image_indices = s.get("image_indices", [])
+
+        text_blocks: List[str] = []
+        paragraph_ids: List[str] = []
+        source_pages_set = set()
+        for idx in para_indices:
+            if idx in para_by_idx:
+                p = para_by_idx[idx]
+                summarized = _summarize_text(p.text or "")
+                if summarized:
+                    text_blocks.append(summarized)
+                    paragraph_ids.append(p.id)
+                    source_pages_set.add(p.page_number)
+
+        images: List[LinkedImage] = []
+        for idx in image_indices:
+            if idx in img_by_idx:
+                images.append(img_by_idx[idx])
+                source_pages_set.add(img_by_idx[idx].page_number)
+
+        target_section_id = None
+        for pid in paragraph_ids:
+            sec = section_by_para_id.get(pid)
+            if sec:
+                target_section_id = sec.id
+                break
+        if not target_section_id and document_sections:
+            target_section_id = document_sections[0].id
+
+        source_pages = sorted(source_pages_set) if source_pages_set else [1]
+        slide = Slide(
+            id=str(uuid.uuid4()),
+            title=title,
+            text_blocks=text_blocks,
+            images=images,
+            source_pages=source_pages,
+            paragraph_ids=paragraph_ids,
+        )
+        if target_section_id and target_section_id in out_sections:
+            out_sections[target_section_id].slides.append(slide)
+        elif out_sections:
+            first_sec_id = section_order[0]
+            out_sections[first_sec_id].slides.append(slide)
+
+    result = [out_sections[sid] for sid in section_order if sid in out_sections and out_sections[sid].slides]
+    if not result:
+        result = list(out_sections.values())
+    return result
+
+
 def _place_unplaced_images(sections: List[Section], linked_images: List[LinkedImage]) -> None:
     """Размещает неразмещённые изображения на ближайший слайд (по linked_paragraph_id или context_paragraph_ids)."""
     placed = {id(img) for sec in sections for slid in sec.slides for img in slid.images}
@@ -245,15 +309,14 @@ def _log_lecture_structure(sections: List[Section]) -> None:
 
 
 def segment_by_llm(
-    paragraphs: List[ParagraphBlock],
+    document_sections: List[DocumentSection],
     linked_images: List[LinkedImage],
     language: str = "ru",
 ) -> Optional[List[Section]]:
     """
-    Семантическая сегментация через LLM с chunking.
-    
-    Returns:
-        List[Section] при успехе, None при ошибке или недоступности LLM.
+    Семантическая сегментация через LLM. Принимает структуру разделов, LLM видит границы.
+
+    items: section | paragraph | image — LLM не должна смешивать контент разных разделов.
     """
     client = LLMClient()
     if not client.available:
@@ -261,52 +324,64 @@ def segment_by_llm(
 
     para_by_idx: dict = {}
     img_by_idx: dict = {}
+    section_by_para_id: dict = {}  # para_id -> DocumentSection
 
     items: List[dict] = []
-    for i, p in enumerate(paragraphs):
-        para_by_idx[i] = p
-        hl = getattr(p, "header_level", 0)
-        if hl > 0:
-            items.append({
-                "idx": i,
-                "type": "header",
-                "text": (p.text or "").strip()[:200],
-                "header_level": hl,
-                "page": p.page_number,
-            })
-        else:
-            compressed = _compress_paragraph_text(p.text or "")
-            if compressed:
-                items.append({
-                    "idx": i,
-                    "type": "paragraph",
-                    "text": compressed,
-                    "page": p.page_number,
-                    "header_level": 0,
-                })
+    idx = 0
+    section_images: dict = {}  # section_id -> [LinkedImage]
+    for img in linked_images:
+        for sec in document_sections:
+            if img in sec.images:
+                section_images.setdefault(sec.id, []).append(img)
+                break
 
-    offset = len(paragraphs)
-    for j, img in enumerate(linked_images):
-        idx = offset + j
-        img_by_idx[idx] = img
+    for sec in document_sections:
         items.append({
             "idx": idx,
-            "type": "image",
-            "caption": (img.caption or "")[:150],
-            "page": img.page_number,
+            "type": "section",
+            "title": sec.title,
+            "section_id": sec.id,
         })
+        idx += 1
+
+        for p in sec.paragraphs:
+            section_by_para_id[p.id] = sec
+            compressed = _compress_paragraph_text(p.text or "")
+            if compressed or getattr(p, "element_type", "") == "header":
+                text = (p.text or "").strip()[:200] if getattr(p, "element_type", "") == "header" else compressed
+                if text:
+                    para_by_idx[idx] = p
+                    items.append({
+                        "idx": idx,
+                        "type": "paragraph",
+                        "text": text,
+                        "page": p.page_number,
+                        "section_id": sec.id,
+                    })
+                    idx += 1
+
+        for img in section_images.get(sec.id, []):
+            img_by_idx[idx] = img
+            items.append({
+                "idx": idx,
+                "type": "image",
+                "caption": (img.caption or "")[:150],
+                "page": img.page_number,
+                "section_id": sec.id,
+            })
+            idx += 1
 
     if not items:
         return None
 
     all_slides_data: List[dict] = []
     chunks = _split_into_chunks(items, CHUNK_SIZE_MIN, CHUNK_SIZE_MAX)
-    logging.info("Semantic segmentation: сформировано %d чанков для обработки LLM", len(chunks))
+    logging.info("Semantic segmentation: сформировано %d чанков (со структурой разделов)", len(chunks))
 
-    for chunk_idx, chunk in enumerate(chunks):
+    for chunk in chunks:
         if len(chunk) > MAX_ITEMS_PER_REQUEST:
-            sub_chunks = [chunk[i:i + MAX_ITEMS_PER_REQUEST] for i in range(0, len(chunk), MAX_ITEMS_PER_REQUEST)]
-            for sub in sub_chunks:
+            for i in range(0, len(chunk), MAX_ITEMS_PER_REQUEST):
+                sub = chunk[i : i + MAX_ITEMS_PER_REQUEST]
                 result = _call_llm_chunk(client, sub, language)
                 if result:
                     all_slides_data.extend(result)
@@ -318,48 +393,21 @@ def segment_by_llm(
     if not all_slides_data:
         return None
 
-    section = Section(id=str(uuid.uuid4()), title="Содержание", order=1)
-    for s in all_slides_data:
-        title = (s.get("title") or "Страница").strip()[:100]
-        para_indices = s.get("paragraph_indices", [])
-        image_indices = s.get("image_indices", [])
-
-        text_blocks: List[str] = []
-        paragraph_ids: List[str] = []
-        source_pages_set = set()
-        for idx in para_indices:
-            if idx in para_by_idx:
-                p = para_by_idx[idx]
-                summarized = _summarize_text(p.text or "")
-                if summarized:
-                    text_blocks.append(summarized)
-                    paragraph_ids.append(p.id)
-                    source_pages_set.add(p.page_number)
-
-        images: List[LinkedImage] = []
-        for idx in image_indices:
-            if idx in img_by_idx:
-                images.append(img_by_idx[idx])
-                source_pages_set.add(img_by_idx[idx].page_number)
-
-        source_pages = sorted(source_pages_set) if source_pages_set else [1]
-        slide = Slide(
-            id=str(uuid.uuid4()),
-            title=title,
-            text_blocks=text_blocks,
-            images=images,
-            source_pages=source_pages,
-            paragraph_ids=paragraph_ids,
-        )
-        section.slides.append(slide)
-
-    section.slides = _aggregate_slides(section.slides)
-    section.slides = _split_large_slides(section.slides)
-    sections_list = _postprocess_sections([section])
+    sections_list = _build_sections_from_llm_slides(
+        all_slides_data,
+        para_by_idx,
+        img_by_idx,
+        section_by_para_id,
+        document_sections,
+    )
+    for sec in sections_list:
+        sec.slides = _aggregate_slides(sec.slides)
+        sec.slides = _split_large_slides(sec.slides)
+    sections_list = _postprocess_sections(sections_list)
     _place_unplaced_images(sections_list, linked_images)
     _log_lecture_structure(sections_list)
     logging.info(
-        "Semantic segmentation (LLM): %d chunks → %d слайдов (после агрегации и постобработки)",
+        "Semantic segmentation (LLM): %d chunks → %d слайдов (со структурой разделов)",
         len(chunks),
         sum(len(sec.slides) for sec in sections_list),
     )

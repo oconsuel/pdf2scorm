@@ -1,4 +1,4 @@
-from .pdf_parser import PDFParser, LayoutParser
+from .stage1_pdf_parser import PDFParser, LayoutParser
 from .lecture_builder import build_lecture
 from .scorm_builder import SCORMBuilder
 

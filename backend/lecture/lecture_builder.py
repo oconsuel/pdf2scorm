@@ -2,74 +2,111 @@
 # -*- coding: utf-8 -*-
 """
 Оркестратор пайплайна построения лекции из PDF.
-
-Пайплайн: Layout Parsing → Block Normalization → Header Detection → Image Linking → Slide Builder → Lecture
 """
 
 import logging
-import statistics
 from pathlib import Path
 from typing import List, Optional
 
-from .models.lecture_model import DocumentBlock
-from .layout.block_normalizer import BlockNormalizer, detect_headers
-from .images.image_linker import ImageLinker
-from .slides.slide_builder import build_slides_heuristic, sections_to_lecture
-from .semantics.semantic_segmenter import segment_by_llm
+from .models.lecture_model import DocumentBlock, DocumentSection
+from .stage2_layout import extract_layout, normalize_headers, build_sections, flatten_paragraphs
+from .stage3_images.image_linker import ImageLinker
+from .stage5_semantics.semantic_segmenter import segment_by_llm
+from .stage6_slides.slide_builder import build_slides_heuristic, sections_to_lecture
+from .pipeline_csv import (
+    export_stage_1_layout_parsing,
+    export_stage_2_block_normalization,
+    export_stage_3_header_detection,
+    export_stage_4_image_linking,
+    export_stage_5_slide_builder,
+    export_stage_6_lecture,
+)
 
 from .models import Lecture
+
+PROCESS_RESULT_DIR = Path(__file__).parent / "process_result"
 
 
 def build_lecture(
     blocks: List[DocumentBlock],
+    pdf_paths: List[Path],
     parser_temp_dir: Optional[Path] = None,
-    output_images_dir: Optional[Path] = None,  # legacy, не используется
+    output_images_dir: Optional[Path] = None,
+    process_result_dir: Optional[Path] = None,
+    pdf_selected_pages: Optional[List[Optional[List[int]]]] = None,
 ) -> Lecture:
     """
-    Строит модель лекции из DocumentBlock.
-    
+    Строит модель лекции из DocumentBlock и PDF.
+
     Args:
-        blocks: Список DocumentBlock от LayoutParser
+        blocks: Список DocumentBlock от LayoutParser (TEXT + IMAGE, используются IMAGE для image linking)
+        pdf_paths: Пути к PDF для layout extraction через unstructured
         parser_temp_dir: Временная директория парсера (для изображений)
-        output_images_dir: Deprecated, игнорируется
-    
+        pdf_selected_pages: selected_pages для каждого PDF (None = все страницы)
+
     Returns:
         Lecture (совместим со scorm_builder)
     """
-    if not blocks:
-        raise ValueError("Список блоков пуст")
+    if not pdf_paths:
+        raise ValueError("pdf_paths обязателен для layout extraction (unstructured)")
 
-    # 1. Normalize blocks (строки → абзацы)
-    normalizer = BlockNormalizer()
-    paragraphs = normalizer.normalize(blocks)
-    
-    # 2. Detect headers (H1, H2, H3)
-    if paragraphs:
-        font_sizes = [p.font_size for p in paragraphs]
-        median_font = statistics.median(font_sizes)
-        std_font = statistics.stdev(font_sizes) if len(font_sizes) > 1 else 0
-        paragraphs = detect_headers(paragraphs, median_font, std_font)
-    
-    # 3. Link images
+    blocks = blocks or []
+    csv_dir = process_result_dir if process_result_dir is not None else PROCESS_RESULT_DIR
+    csv_dir.mkdir(parents=True, exist_ok=True)
+
+    export_stage_1_layout_parsing(blocks or [], csv_dir)
+
+    paragraphs: List = []
+    sel_pages = pdf_selected_pages or [None] * max(len(pdf_paths), 1)
+    for idx, pdf_path in enumerate(pdf_paths):
+        sp = sel_pages[idx] if idx < len(sel_pages) else None
+        paras = extract_layout(pdf_path, selected_pages=sp)
+        paragraphs.extend(paras)
+
+    if not paragraphs:
+        raise ValueError("Layout extraction не вернул элементов. Проверьте PDF и наличие unstructured[pdf].")
+
+    export_stage_2_block_normalization(paragraphs, csv_dir)
+    export_stage_3_header_detection(paragraphs, csv_dir)
+
+    paragraphs = normalize_headers(paragraphs)
+
+    header_count = sum(1 for p in paragraphs if getattr(p, "is_header", False) or getattr(p, "header_level", 0) > 0)
+    text_count = sum(1 for p in paragraphs if getattr(p, "header_level", 0) == 0)
+    image_count = sum(1 for b in blocks if b.type == "IMAGE")
+    logging.info(
+        "Layout extraction (unstructured): элементов %d (заголовков %d, текстовых %d, изображений %d)",
+        len(paragraphs),
+        header_count,
+        text_count,
+        image_count,
+    )
+
+    document_sections = build_sections(paragraphs)
+    flat_paragraphs = flatten_paragraphs(document_sections)
+
     linker = ImageLinker()
-    linked_images = linker.link(blocks, paragraphs)
+    linked_images = linker.link(blocks, flat_paragraphs)
+    export_stage_4_image_linking(flat_paragraphs, linked_images, csv_dir)
 
-    # 4. Build slides: LLM при наличии ключа, иначе эвристики
-    language = _detect_language(paragraphs)
-    sections = segment_by_llm(paragraphs, linked_images, language=language)
+    _assign_images_to_sections(document_sections, linked_images)
+
+    language = _detect_language(flat_paragraphs)
+    sections = segment_by_llm(document_sections, linked_images, language=language)
     if sections is None:
         logging.warning(
             "LLM недоступна или произошла ошибка — переход на fallback-режим (эвристики)",
         )
-        sections = build_slides_heuristic(paragraphs, linked_images)
-    
-    # 5. Extract metadata and convert to Lecture
+        sections = build_slides_heuristic(flat_paragraphs, linked_images)
+    export_stage_5_slide_builder(sections, csv_dir)
+
     title = _extract_title(paragraphs, sections)
     description = _extract_description(paragraphs)
     keywords = _extract_keywords(paragraphs, sections)
     
     lecture = sections_to_lecture(sections, title=title, description=description, language=language)
     lecture.metadata["keywords"] = keywords
+    export_stage_6_lecture(lecture, csv_dir)
 
     total_pages = lecture.get_total_pages()
     total_blocks = sum(
@@ -86,6 +123,28 @@ def build_lecture(
         avg_blocks,
     )
     return lecture
+
+
+def _assign_images_to_sections(
+    document_sections: List[DocumentSection],
+    linked_images: List,
+) -> None:
+    """Добавляет LinkedImage в section.images по linked_paragraph_id или context_paragraph_ids."""
+    para_to_section = {}
+    for sec in document_sections:
+        for p in sec.paragraphs:
+            para_to_section[p.id] = sec
+    for img in linked_images:
+        ids_to_check = list(getattr(img, "context_paragraph_ids", []) or [])
+        if getattr(img, "linked_paragraph_id", None) and img.linked_paragraph_id not in ids_to_check:
+            ids_to_check.insert(0, img.linked_paragraph_id)
+        if not ids_to_check and getattr(img, "linked_paragraph_id", None):
+            ids_to_check = [img.linked_paragraph_id]
+        for pid in ids_to_check:
+            sec = para_to_section.get(pid)
+            if sec and img not in sec.images:
+                sec.images.append(img)
+                break
 
 
 def _extract_title(paragraphs: List, sections: List) -> str:

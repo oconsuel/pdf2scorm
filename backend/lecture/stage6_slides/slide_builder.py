@@ -354,7 +354,7 @@ def sections_to_lecture(
     description: str = "",
     language: str = "ru",
 ) -> Lecture:
-    """Адаптер: Section[] → Lecture (LectureSection, LecturePage, ContentBlock)."""
+    """Section[] → Lecture (LectureSection, LecturePage, ContentBlock)."""
     lecture = Lecture(title=title, description=description, language=language)
     for sec in sections:
         ls = LectureSection(id=sec.id, title=sec.title, order=sec.order)
