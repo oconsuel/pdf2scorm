@@ -1,5 +1,10 @@
 # Models package
 from .lecture_model import (
+    DocumentBlock,
+    ParagraphBlock,
+    LinkedImage,
+    Slide,
+    Section,
     Lecture,
     LectureSection,
     LecturePage,
@@ -13,6 +18,11 @@ from .lecture_model import (
 )
 
 __all__ = [
+    'DocumentBlock',
+    'ParagraphBlock',
+    'LinkedImage',
+    'Slide',
+    'Section',
     'Lecture',
     'LectureSection',
     'LecturePage',

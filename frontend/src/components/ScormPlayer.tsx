@@ -296,78 +296,70 @@ export function ScormPlayer({ packageBlob, config, onClose }: ScormPlayerProps) 
       );
     }
     
-    // Заменяем относительные пути на blob URLs
-    // Определяем базовый путь для SCO файла
+    // Заменяем относительные пути: изображения → data URL (работает в sandbox iframe), остальное → blob URL
     const lastSlashIndex = scoFile.lastIndexOf('/');
     const basePath = lastSlashIndex >= 0 ? scoFile.substring(0, lastSlashIndex + 1) : '';
-    
-    // Обрабатываем src и href атрибуты
+    const imageExts = /\.(png|jpe?g|gif|webp|svg|bmp)(\?|$)/i;
+
+    const resolvePath = (path: string): string =>
+      path.startsWith('/') ? path.slice(1) : basePath ? basePath + path : path;
+    const normalizePath = (p: string): string => {
+      const parts = p.split('/');
+      const out: string[] = [];
+      for (const part of parts) {
+        if (part === '..' && out.length) out.pop();
+        else if (part !== '.' && part) out.push(part);
+      }
+      return out.join('/');
+    };
+    const findBlob = (resolvedPath: string): Blob | null => {
+      const b = fileMap.get(resolvedPath);
+      if (b) return b;
+      for (const [filePath, blob] of fileMap.entries()) {
+        const nf = filePath.split('/').filter(Boolean).join('/');
+        const nr = resolvedPath.split('/').filter(Boolean).join('/');
+        if (nf.toLowerCase() === nr.toLowerCase() || nf.endsWith('/' + nr)) return blob;
+      }
+      return null;
+    };
+    const blobToDataUrl = (blob: Blob): Promise<string> =>
+      new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result as string);
+        r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+
+    const pathToUrl = new Map<string, string>();
+    const matches = [...scoContent.matchAll(/(src|href)=["']([^"']+)["']/g)];
+    const seen = new Set<string>();
+    for (const m of matches) {
+      const path = m[2];
+      if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) continue;
+      const resolved = normalizePath(resolvePath(path));
+      if (seen.has(resolved)) continue;
+      seen.add(resolved);
+      const blob = findBlob(resolved);
+      if (!blob) {
+        console.warn(`Resource not found in package: ${resolved}`);
+        continue;
+      }
+      if (imageExts.test(resolved)) {
+        pathToUrl.set(resolved, await blobToDataUrl(blob));
+      } else {
+        const blobUrl = resourceUrls.get(resolved) ?? URL.createObjectURL(blob);
+        if (!resourceUrls.has(resolved)) resourceUrls.set(resolved, blobUrl);
+        pathToUrl.set(resolved, blobUrl);
+      }
+    }
+
     scoContent = scoContent.replace(
       /(src|href)=["']([^"']+)["']/g,
       (match, attr, path) => {
-        // Пропускаем абсолютные URL и data URI
-        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) {
-          return match;
-        }
-        
-        // Решаем относительный путь
-        let resolvedPath = path;
-        if (path.startsWith('/')) {
-          // Абсолютный путь от корня пакета
-          resolvedPath = path.substring(1); // Убираем ведущий /
-        } else {
-          // Относительный путь от SCO файла
-          if (basePath) {
-            resolvedPath = basePath + path;
-          } else {
-            // Если SCO файл в корне, путь уже правильный
-            resolvedPath = path;
-          }
-        }
-        
-        // Нормализуем путь (убираем .. и .)
-        const parts = resolvedPath.split('/');
-        const normalized: string[] = [];
-        for (const part of parts) {
-          if (part === '..') {
-            if (normalized.length > 0) {
-              normalized.pop();
-            }
-          } else if (part !== '.' && part !== '') {
-            normalized.push(part);
-          }
-        }
-        resolvedPath = normalized.join('/');
-        
-        // Пробуем найти blob URL для ресурса
-        // Проверяем точное совпадение
-        let blobUrl = resourceUrls.get(resolvedPath);
-        
-        // Если не найдено, пробуем варианты с разными регистрами и путями
-        if (!blobUrl) {
-          // Пробуем найти в fileMap по разным вариантам пути
-          for (const [filePath, blob] of fileMap.entries()) {
-            // Нормализуем путь файла для сравнения
-            const normalizedFilePath = filePath.split('/').filter((p: string) => p).join('/');
-            const normalizedResolved = resolvedPath.split('/').filter((p: string) => p).join('/');
-            
-            if (normalizedFilePath.toLowerCase() === normalizedResolved.toLowerCase() ||
-                normalizedFilePath.endsWith('/' + normalizedResolved) ||
-                normalizedFilePath === normalizedResolved) {
-              // Создаем blob URL для этого файла
-              blobUrl = URL.createObjectURL(blob);
-              resourceUrls.set(resolvedPath, blobUrl);
-              break;
-            }
-          }
-        }
-        
-        if (blobUrl) {
-          return `${attr}="${blobUrl}"`;
-        }
-        
-        // Если не найдено, оставляем оригинальный путь (может быть ошибка в пакете)
-        console.warn(`Resource not found in package: ${resolvedPath} (original: ${path})`);
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return match;
+        const resolved = normalizePath(resolvePath(path));
+        const url = pathToUrl.get(resolved);
+        if (url) return `${attr}="${url}"`;
         return match;
       }
     );

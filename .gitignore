@@ -1,16 +1,7 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
 # Dependencies
-node_modules
-dist
-dist-ssr
+node_modules/
+dist/
+dist-ssr/
 *.local
 
 # Python
@@ -37,7 +28,7 @@ MANIFEST
 venv/
 env/
 ENV/
-.venv
+.venv/
 *.pyc
 *.pyo
 *.pyd
@@ -51,17 +42,29 @@ instance/
 .webassets-cache
 
 # Vite
-.vite
+.vite/
 .vite-ssg-manifest.json
 
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
 # Editor directories and files
-.vscode/*
+.vscode/
 !.vscode/extensions.json
-.idea
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
+*.iml
+*.sublime-project
+*.sublime-workspace
 
 # Environment variables
 .env
@@ -90,13 +93,6 @@ coverage/
 *.lcov
 .nyc_output
 
-# IDE
-.idea/
-*.iml
-.vscode/
-*.sublime-project
-*.sublime-workspace
-
 # Debug and temporary output
 debug_output/
 images/
@@ -111,9 +107,3 @@ images/
 # Temporary files from PDF processing
 temp/
 tmp/
-*.tmp
-
-# Flask instance folder
-instance/
-.webassets-cache
-

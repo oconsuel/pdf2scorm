@@ -35,6 +35,7 @@
 
 ```bash
 # Frontend
+cd frontend
 npm install
 
 # Backend
@@ -51,6 +52,7 @@ python app.py
 # → http://localhost:5001
 
 # Терминал 2 — Frontend
+cd frontend
 npm run dev
 # → http://localhost:5173
 ```
@@ -58,8 +60,9 @@ npm run dev
 ### Сборка
 
 ```bash
+cd frontend
 npm run build
-# Собранные файлы → dist/
+# Собранные файлы → frontend/dist/
 ```
 
 ## Функциональность
@@ -103,70 +106,97 @@ Drag & Drop PDF файла на главной странице — мгнове
 
 ```
 pdf2scorm/
-├── index.html                  # Точка входа Vite
-├── package.json                # npm зависимости
-├── vite.config.ts              # Конфигурация Vite
-├── tsconfig.json               # Конфигурация TypeScript
-├── tailwind.config.js          # Конфигурация Tailwind CSS
-├── postcss.config.js           # Конфигурация PostCSS
-├── src/                        # Frontend (React + TypeScript)
-│   ├── App.tsx                 # Главный компонент + роутинг
-│   ├── main.tsx                # Точка входа
-│   ├── types.ts                # TypeScript типы
-│   ├── components/
-│   │   ├── LandingPage.tsx     # Главная: drag & drop + конструктор
-│   │   ├── Header.tsx
-│   │   ├── Footer.tsx
-│   │   ├── FileUpload.tsx      # Загрузка файлов
-│   │   ├── PdfPreviewModal.tsx # Предпросмотр PDF
-│   │   ├── SettingsPanel.tsx   # Панель настроек SCORM
-│   │   ├── LivePreview.tsx     # Предпросмотр в реальном времени
-│   │   ├── PackagePreviewModal.tsx
-│   │   ├── ScormPlayer.tsx     # Встроенный SCORM-плеер
-│   │   ├── HelpModal.tsx
-│   │   └── settings/           # Вкладки настроек
-│   ├── utils/
-│   │   ├── scormGenerator.ts   # Генератор SCORM пакетов
-│   │   ├── configPresets.ts    # Конфигурация по умолчанию
-│   │   └── fileUtils.ts
-│   └── styles/
-│       └── index.css
-├── backend/                    # Backend (Flask + Python)
-│   ├── app.py                  # Flask API сервер
-│   ├── pdf_parser.py           # Парсер PDF (PyMuPDF)
-│   ├── lecture_builder.py      # Построитель структуры лекции
-│   ├── scorm_builder.py        # Сборщик SCORM из модели лекции
-│   ├── simple_converter.py     # Быстрая конвертация PDF → SCORM
-│   └── models/
-│       └── lecture_model.py    # Модели данных
-└── API.md                      # Документация API
+├── frontend/                       # Frontend (React + TypeScript + Vite)
+│   ├── index.html                  # Точка входа Vite
+│   ├── package.json                # npm зависимости
+│   ├── vite.config.ts              # Конфигурация Vite
+│   ├── tsconfig.json               # Конфигурация TypeScript
+│   ├── tailwind.config.js          # Конфигурация Tailwind CSS
+│   ├── postcss.config.js           # Конфигурация PostCSS
+│   └── src/
+│       ├── App.tsx                 # Главный компонент + роутинг
+│       ├── main.tsx                # Точка входа
+│       ├── types.ts                # TypeScript типы
+│       ├── components/
+│       │   ├── LandingPage.tsx     # Главная: drag & drop + конструктор
+│       │   ├── Header.tsx
+│       │   ├── Footer.tsx
+│       │   ├── FileUpload.tsx      # Загрузка файлов
+│       │   ├── PdfPreviewModal.tsx # Предпросмотр PDF
+│       │   ├── SettingsPanel.tsx   # Панель настроек SCORM
+│       │   ├── LivePreview.tsx     # Предпросмотр в реальном времени
+│       │   ├── PackagePreviewModal.tsx
+│       │   ├── ScormPlayer.tsx     # Встроенный SCORM-плеер
+│       │   ├── HelpModal.tsx
+│       │   └── settings/           # Вкладки настроек
+│       ├── utils/
+│       │   ├── scormGenerator.ts   # Генератор SCORM пакетов
+│       │   ├── configPresets.ts    # Конфигурация по умолчанию
+│       │   └── fileUtils.ts
+│       └── styles/
+│           └── index.css
+├── backend/                        # Backend (Flask + Python)
+│   ├── app.py                      # Flask API сервер
+│   ├── requirements.txt            # Python зависимости
+│   ├── simple_converter/           # Быстрая конвертация PDF → SCORM
+│   │   └── converter.py
+│   └── lecture/                    # Конструктор лекций
+│       ├── pdf_parser/             # Layout parsing (DocumentBlock)
+│       ├── layout/                 # Нормализация блоков, детекция заголовков
+│       ├── images/                 # Привязка изображений к тексту
+│       ├── slides/                 # Построение слайдов (эвристики)
+│       ├── semantics/              # LLM-сегментация (GPT-4o, агрегация, постобработка)
+│       ├── llm/                    # LLM-клиент (OpenAI API)
+│       ├── lecture_builder.py      # Оркестратор пайплайна
+│       ├── scorm_builder.py        # Сборщик SCORM из модели лекции
+│       └── models/
+│           └── lecture_model.py    # Модели данных
+├── API.md                          # Документация API
+├── LICENSE                         # MIT лицензия
+├── TROUBLESHOOTING.md              # Решение проблем
+└── README.md
 ```
 
 ## Архитектура
 
+### Быстрая конвертация
+
 ```
-PDF → PDFParser → [ParsedElement...] → LectureBuilder → Lecture → SCORMBuilder → SCORM ZIP
+PDF → PyMuPDF (рендер страниц) → изображения → SCORM ZIP
 ```
 
-| Слой | Модуль | Описание |
-|------|--------|----------|
-| Парсинг | `pdf_parser.py` | Извлекает атомарные элементы (текст, изображения) из PDF через PyMuPDF |
-| Структурирование | `lecture_builder.py` | Группирует элементы в абзацы, определяет заголовки, формирует разделы |
-| Генерация | `scorm_builder.py` | Рендерит HTML-страницы и собирает SCORM 2004 пакет |
-| Быстрая конвертация | `simple_converter.py` | PDF → изображения → SCORM без семантического анализа |
+| Модуль | Путь | Описание |
+|--------|------|----------|
+| SimpleConverter | `backend/simple_converter/converter.py` | PDF → изображения → SCORM без семантического анализа |
+
+### Конструктор лекций
+
+```
+PDF → Layout Parsing → DocumentBlock[] → Block Normalization → ParagraphBlock[] 
+  → Header Detection → Image Linking → Slide Builder (heuristic) → Section[] 
+  → sections_to_lecture() → Lecture → SCORM ZIP
+```
+
+| Слой | Модуль | Путь | Описание |
+|------|--------|------|----------|
+| Layout Parsing | LayoutParser | `backend/lecture/pdf_parser/parser.py` | Извлекает DocumentBlock (строки, изображения) через PyMuPDF |
+| Normalization | BlockNormalizer | `backend/lecture/layout/block_normalizer.py` | Объединяет строки в абзацы, определяет H1/H2/H3 |
+| Image Linking | ImageLinker | `backend/lecture/images/image_linker.py` | Связывает изображения с подписями или ближайшими абзацами |
+| Slide Builder | SlideBuilder | `backend/lecture/slides/slide_builder.py` | Строит слайды по эвристикам (H1=раздел, H2=слайд) |
+| Оркестратор | build_lecture | `backend/lecture/lecture_builder.py` | Собирает пайплайн, возвращает Lecture |
+| Генерация | SCORMBuilder | `backend/lecture/scorm_builder.py` | Рендерит HTML и собирает SCORM 2004 пакет |
+| LLM (опционально) | segment_by_llm | `backend/lecture/semantics/` | GPT-4o для семантической сегментации; при отсутствии `OPENAI_API_KEY` — fallback на эвристики |
+| Модели | DocumentBlock, ParagraphBlock, Slide... | `backend/lecture/models/lecture_model.py` | Pipeline-модели + Lecture/LecturePage для SCORM |
 
 ### Модель данных
 
-- `ParsedElement` — атомарный элемент из PDF (текстовый span или изображение)
-- `Lecture` → `LectureSection` → `LecturePage` → `ContentBlock` (Text / Image / List / Table)
+- **Pipeline:** `DocumentBlock` → `ParagraphBlock` → `LinkedImage` → `Slide` → `Section`
+- **SCORM (legacy):** `Lecture` → `LectureSection` → `LecturePage` → `ContentBlock` (Text / Image)
+- Адаптер `sections_to_lecture()` преобразует Section[] в Lecture
 
 ## API
 
 Документация API вынесена в отдельный файл: **[API.md](API.md)**
-
-## Решение проблем
-
-См. **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**
 
 ## Лицензия
 

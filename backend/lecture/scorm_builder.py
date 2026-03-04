@@ -13,7 +13,7 @@ from xml.dom import minidom
 from typing import Optional
 import logging
 
-from models.lecture_model import (
+from .models.lecture_model import (
     Lecture,
     LectureSection,
     LecturePage,

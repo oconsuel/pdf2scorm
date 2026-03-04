@@ -12,6 +12,68 @@ from typing import Literal, Any, Optional, List, Tuple
 from enum import Enum
 
 
+# --- Pipeline models (new architecture) ---
+
+@dataclass
+class DocumentBlock:
+    """Блок документа, извлечённый при layout parsing. Минимальная единица — строка (line)."""
+    id: str
+    type: Literal["TEXT", "IMAGE"]
+    page_number: int
+    bbox: Tuple[float, float, float, float]  # (x0, y0, x1, y1)
+    text: str = ""
+    font_size: float = 12.0
+    is_bold: bool = False
+    image_path: Optional[str] = None
+
+
+@dataclass
+class ParagraphBlock:
+    """Абзац — объединённые строки текста после нормализации."""
+    id: str
+    text: str
+    page_number: int
+    bbox: Tuple[float, float, float, float]
+    font_size: float = 12.0
+    is_bold: bool = False
+    lines_count: int = 1
+    header_level: int = 0  # 0 = не заголовок, 1 = H1, 2 = H2, 3 = H3
+
+
+@dataclass
+class LinkedImage:
+    """Изображение с привязкой к контексту."""
+    image_path: str
+    caption: str = ""
+    position: int = 0  # порядок вставки
+    linked_paragraph_id: Optional[str] = None
+    page_number: int = 0
+    bbox: Tuple[float, float, float, float] = (0, 0, 0, 0)
+    context_paragraph_ids: List[str] = field(default_factory=list)  # абзацы до/после в документе
+
+
+@dataclass
+class Slide:
+    """Слайд в новой модели."""
+    id: str
+    title: str
+    text_blocks: List[str] = field(default_factory=list)
+    images: List[LinkedImage] = field(default_factory=list)
+    source_pages: List[int] = field(default_factory=list)
+    paragraph_ids: List[str] = field(default_factory=list)  # для привязки изображений
+
+
+@dataclass
+class Section:
+    """Раздел лекции (новая модель)."""
+    id: str
+    title: str
+    slides: List[Slide] = field(default_factory=list)
+    order: int = 0
+
+
+# --- Legacy / SCORM models (сохраняем для совместимости) ---
+
 class ContentBlockType(str, Enum):
     """Типы блоков контента"""
     TEXT = "text"
