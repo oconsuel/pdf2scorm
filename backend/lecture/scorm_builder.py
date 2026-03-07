@@ -13,6 +13,21 @@ from xml.dom import minidom
 from typing import Optional
 import logging
 
+SCORM_LABELS = {
+    'ru': {'page': 'Страница', 'content': 'Содержание'},
+    'en': {'page': 'Page', 'content': 'Content'},
+}
+
+
+def _page_label(lang: str, num: int) -> str:
+    labels = SCORM_LABELS.get(lang, SCORM_LABELS['ru'])
+    return f"{labels['page']} {num}"
+
+
+def _content_label(lang: str) -> str:
+    return SCORM_LABELS.get(lang, SCORM_LABELS['ru'])['content']
+
+
 from .models.lecture_model import (
     Lecture,
     LectureSection,
@@ -108,10 +123,10 @@ class SCORMBuilder:
                                     'type': 'resource',
                                 })
             
-            # Теперь генерируем HTML страницы после обновления путей изображений
+            scorm_lang = config.get('language') or getattr(lecture, 'language', 'ru') or 'ru'
             page_files = []
             for idx, page in enumerate(all_pages, 1):
-                html_content = self._render_page_html(page, all_pages, config)
+                html_content = self._render_page_html(page, all_pages, config, scorm_lang)
                 html_filename = f'page_{idx}.html'
                 html_path = package_dir / html_filename
                 
@@ -136,7 +151,8 @@ class SCORMBuilder:
                 lecture=lecture,
                 page_files=page_files,
                 image_files=image_files,
-                config=config
+                config=config,
+                scorm_lang=scorm_lang,
             )
             
             # Сохраняем manifest
@@ -175,7 +191,7 @@ class SCORMBuilder:
             if package_dir.exists():
                 shutil.rmtree(package_dir, ignore_errors=True)
     
-    def _render_page_html(self, page: LecturePage, all_pages: list, config: dict) -> str:
+    def _render_page_html(self, page: LecturePage, all_pages: list, config: dict, scorm_lang: str = 'ru') -> str:
         """
         Рендерит HTML страницу из LecturePage и ContentBlock
         
@@ -201,12 +217,13 @@ class SCORMBuilder:
         player_style = config.get('playerStyle', {})
         primary_color = player_style.get('primaryColor', '#0ea5e9')
         
+        page_title_text = _page_label(scorm_lang, current_index + 1)
         html = f"""<!DOCTYPE html>
-<html lang="ru">
+<html lang="{scorm_lang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Страница {current_index + 1}</title>
+    <title>{page_title_text}</title>
     <style>
         * {{
             margin: 0;
@@ -487,7 +504,8 @@ class SCORMBuilder:
         return ''
     
     def _create_manifest_from_lecture(self, lecture: Lecture, page_files: list, 
-                                     image_files: list, config: dict) -> ET.Element:
+                                     image_files: list, config: dict,
+                                     scorm_lang: str = 'ru') -> ET.Element:
         """
         Создаёт SCORM 2004 manifest из модели Lecture
         
@@ -565,7 +583,7 @@ class SCORMBuilder:
                 page_item.set('identifier', page_item_id)
                 page_item.set('identifierref', resource_id)
                 page_title = ET.SubElement(page_item, 'title')
-                page_title.text = f'Страница {page_counter}'
+                page_title.text = _page_label(scorm_lang, page_counter)
                 
                 item_seq = ET.SubElement(page_item, 'imsss:sequencing')
                 dc = ET.SubElement(item_seq, 'imsss:deliveryControls')

@@ -1,29 +1,31 @@
 import { useState } from 'react';
-import { SCORMConfig } from '../types';
+import { SCORMConfig, Lang } from '../types';
+import { t } from '../i18n/translations';
 import { ProgressCompletionTab } from './settings/ProgressCompletionTab';
 import { LearnerPreferencesTab } from './settings/LearnerPreferencesTab';
 import { PlayerStyleTab } from './settings/PlayerStyleTab';
 import { LivePreview } from './LivePreview';
 
 interface SettingsPanelProps {
+  lang: Lang;
   config: SCORMConfig;
   onConfigChange: (config: SCORMConfig) => void;
 }
 
-const tabs = [
-  { id: 'progress', label: 'Прогресс и завершение', number: 1 },
-  { id: 'preferences', label: 'Предпочтения обучающегося', number: 2 },
-  { id: 'player', label: 'Стиль плеера и UX', number: 3 },
-];
-
-export function SettingsPanel({ config, onConfigChange }: SettingsPanelProps) {
+export function SettingsPanel({ lang, config, onConfigChange }: SettingsPanelProps) {
+  const tabs = [
+    { id: 'progress', label: t(lang, 'progressCompletion'), number: 1 },
+    { id: 'preferences', label: t(lang, 'learnerPreferences'), number: 2 },
+    { id: 'player', label: t(lang, 'playerStyle'), number: 3 },
+  ];
   const [activeTab, setActiveTab] = useState('progress');
 
-  const updateConfig = (section: keyof SCORMConfig, updates: any) => {
+  const updateConfig = (section: keyof SCORMConfig, updates: Record<string, unknown>) => {
+    const current = config[section];
     onConfigChange({
       ...config,
       [section]: {
-        ...config[section],
+        ...(typeof current === 'object' && current !== null ? current : {}),
         ...updates,
       },
     });
@@ -106,7 +108,7 @@ export function SettingsPanel({ config, onConfigChange }: SettingsPanelProps) {
         </div>
       </div>
 
-      <LivePreview config={config} />
+      <LivePreview lang={lang} config={config} />
     </div>
   );
 }

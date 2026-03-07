@@ -8,7 +8,10 @@ import { HelpModal } from './components/HelpModal';
 import { PackagePreviewModal } from './components/PackagePreviewModal';
 import { ScormPlayer } from './components/ScormPlayer';
 import { LandingPage } from './components/LandingPage';
-import { UploadedFile, SCORMConfig, Theme } from './types';
+import { SiteFooter } from './components/SiteFooter';
+import { ThankYouModal } from './components/ThankYouModal';
+import { UploadedFile, SCORMConfig, Theme, Lang } from './types';
+import { t } from './i18n/translations';
 import { defaultConfig } from './utils/configPresets';
 import { validateConfig, generateScormPackage } from './utils/scormGenerator';
 
@@ -17,6 +20,7 @@ type View = 'landing' | 'constructor';
 function App() {
   const [view, setView] = useState<View>('landing');
   const [theme, setTheme] = useState<Theme>('light');
+  const [lang, setLang] = useState<Lang>('ru');
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [config, setConfig] = useState<SCORMConfig>(defaultConfig);
   const [showHelp, setShowHelp] = useState(false);
@@ -24,6 +28,7 @@ function App() {
   const [hasPackage, setHasPackage] = useState(false);
   const [lastPackage, setLastPackage] = useState<Blob | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showThankYou, setShowThankYou] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
 
   useEffect(() => {
@@ -34,10 +39,10 @@ function App() {
     }
   }, [theme]);
 
-  const validation = validateConfig(config, files);
+  const validation = validateConfig(config, files, lang);
   const status = validation.valid
-    ? 'Готово к генерации'
-    : `Отсутствуют обязательные поля: ${validation.errors.length}`;
+    ? t(lang, 'readyToGenerate')
+    : `${t(lang, 'missingFields')}: ${validation.errors.length}`;
 
   const handleGenerate = async () => {
     if (!validation.valid) {
@@ -51,12 +56,14 @@ function App() {
       const configWithTitle = {
         ...config,
         title: config.title || launchFile.file.name.replace(/\.[^/.]+$/, ''),
+        language: lang,
       };
 
       const packageBlob = await generateScormPackage(files, configWithTitle);
       setLastPackage(packageBlob);
       setHasPackage(true);
       setShowPreview(true);
+      setShowThankYou(true);
     } catch (error: any) {
       const msg = error?.message || 'Ошибка при генерации пакета';
 
@@ -95,10 +102,22 @@ function App() {
       <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
         <Header
           theme={theme}
+          lang={lang}
           onThemeChange={setTheme}
+          onLangChange={setLang}
           onHelpClick={() => setShowHelp(true)}
         />
-        <LandingPage onNavigateToConstructor={() => setView('constructor')} />
+        <LandingPage
+          lang={lang}
+          onNavigateToConstructor={() => setView('constructor')}
+          onConvertSuccess={() => setShowThankYou(true)}
+        />
+        <SiteFooter lang={lang} />
+        <ThankYouModal
+          lang={lang}
+          isOpen={showThankYou}
+          onClose={() => setShowThankYou(false)}
+        />
         <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
       </div>
     );
@@ -109,7 +128,9 @@ function App() {
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <Header
         theme={theme}
+        lang={lang}
         onThemeChange={setTheme}
+        onLangChange={setLang}
         onHelpClick={() => setShowHelp(true)}
       />
 
@@ -121,12 +142,12 @@ function App() {
               <button
                 onClick={() => setView('landing')}
                 className="p-2 -ml-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                title="Назад"
+                title={t(lang, 'back')}
               >
                 <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-300" />
               </button>
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
-                Рабочая область курса
+                {t(lang, 'courseArea')}
               </h2>
             </div>
             <div className="flex-1 overflow-y-auto">
@@ -138,20 +159,21 @@ function App() {
           <div className="flex flex-col min-h-0 lg:border-l lg:border-gray-200 lg:dark:border-gray-700 lg:pl-6 pt-6 lg:pt-0 border-t border-gray-200 dark:border-gray-700">
             <div className="mb-4">
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
-                Панель настроек SCORM
+                {t(lang, 'settingsPanel')}
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                PDF разбивается на логические страницы с автоматическим определением структуры
+                {t(lang, 'settingsHint')}
               </p>
             </div>
             <div className="flex-1 overflow-hidden">
-              <SettingsPanel config={config} onConfigChange={setConfig} />
+              <SettingsPanel lang={lang} config={config} onConfigChange={setConfig} />
             </div>
           </div>
         </div>
       </main>
 
       <Footer
+        lang={lang}
         status={status}
         canGenerate={validation.valid}
         hasPackage={hasPackage}
@@ -160,9 +182,18 @@ function App() {
         isGenerating={isGenerating}
       />
 
+      <SiteFooter lang={lang} />
+
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
 
+      <ThankYouModal
+        lang={lang}
+        isOpen={showThankYou}
+        onClose={() => setShowThankYou(false)}
+      />
+
       <PackagePreviewModal
+        lang={lang}
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}
         onDownload={handleDownload}
@@ -176,13 +207,14 @@ function App() {
               /\.[^/.]+$/,
               '',
             ) ||
-            'SCORM Курс',
+            t(lang, 'scormCourse'),
         }}
         files={files}
       />
 
       {lastPackage && showPlayer && (
         <ScormPlayer
+          lang={lang}
           packageBlob={lastPackage}
           config={config}
           onClose={() => setShowPlayer(false)}

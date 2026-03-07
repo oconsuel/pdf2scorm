@@ -5,7 +5,7 @@
 """
 
 import logging
-from typing import List
+from typing import List, Optional
 
 from ..models.lecture_model import ParagraphBlock
 
@@ -24,7 +24,7 @@ def _median_font_size(paragraphs: List[ParagraphBlock], exclude_headers: bool = 
     return sorted_vals[mid] if len(sorted_vals) % 2 else (sorted_vals[mid - 1] + sorted_vals[mid]) / 2
 
 
-def _vertical_gap(prev: ParagraphBlock, curr: ParagraphBlock) -> float | None:
+def _vertical_gap(prev: ParagraphBlock, curr: ParagraphBlock) -> Optional[float]:
     if prev.page_number != curr.page_number:
         return None
     p0, p1 = prev.bbox, curr.bbox

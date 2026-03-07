@@ -38,10 +38,12 @@ export interface PlayerStyleConfig {
 
 export interface SCORMConfig {
   title?: string;
+  language?: Lang;
   progressCompletion: ProgressCompletionConfig;
   learnerPreferences: LearnerPreferencesConfig;
   playerStyle: PlayerStyleConfig;
 }
 
 export type Theme = 'light' | 'dark';
+export type Lang = 'ru' | 'en';
 

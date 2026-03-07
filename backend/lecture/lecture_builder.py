@@ -34,6 +34,7 @@ def build_lecture(
     output_images_dir: Optional[Path] = None,
     process_result_dir: Optional[Path] = None,
     pdf_selected_pages: Optional[List[Optional[List[int]]]] = None,
+    language: Optional[str] = None,
 ) -> Lecture:
     """
     Строит модель лекции из DocumentBlock и PDF.
@@ -91,20 +92,20 @@ def build_lecture(
 
     _assign_images_to_sections(document_sections, linked_images)
 
-    language = _detect_language(flat_paragraphs)
-    sections = segment_by_llm(document_sections, linked_images, language=language)
+    lang = language or _detect_language(flat_paragraphs)
+    sections = segment_by_llm(document_sections, linked_images, language=lang)
     if sections is None:
         logging.warning(
             "LLM недоступна или произошла ошибка — переход на fallback-режим (эвристики)",
         )
-        sections = build_slides_heuristic(flat_paragraphs, linked_images)
+        sections = build_slides_heuristic(flat_paragraphs, linked_images, language=lang)
     export_stage_5_slide_builder(sections, csv_dir)
 
     title = _extract_title(paragraphs, sections)
     description = _extract_description(paragraphs)
     keywords = _extract_keywords(paragraphs, sections)
     
-    lecture = sections_to_lecture(sections, title=title, description=description, language=language)
+    lecture = sections_to_lecture(sections, title=title, description=description, language=lang)
     lecture.metadata["keywords"] = keywords
     export_stage_6_lecture(lecture, csv_dir)
 

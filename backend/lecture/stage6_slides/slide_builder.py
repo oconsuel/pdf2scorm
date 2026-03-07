@@ -28,7 +28,11 @@ MAX_CHARS_PER_SLIDE = 380
 MAX_TEXT_BLOCKS_PER_SLIDE = 4
 MAX_PARAGRAPH_CHARS_BEFORE_SPLIT = 500
 
-# Научные разделы: новый Section при таком заголовке
+DEFAULT_LABELS = {
+    'ru': {'content': 'Содержание', 'page': 'Страница', 'image': 'Изображение'},
+    'en': {'content': 'Content', 'page': 'Page', 'image': 'Image'},
+}
+
 SCIENTIFIC_SECTION_HEADERS = (
     "введение", "методы", "результаты", "обсуждение", "заключение",
     "introduction", "methods", "results", "discussion", "conclusion",
@@ -64,13 +68,15 @@ class SlideBuilder:
         self,
         paragraphs: List[ParagraphBlock],
         linked_images: List[LinkedImage],
+        language: str = 'ru',
     ) -> List[Section]:
         """
         Эвристика: H1 = новый раздел, H2 = новый слайд.
         Текст распределяется с ограничением по длине и количеству блоков.
         """
+        labels = DEFAULT_LABELS.get(language, DEFAULT_LABELS['ru'])
         if not paragraphs:
-            return self._sections_from_images_only(linked_images)
+            return self._sections_from_images_only(linked_images, labels)
 
         sections: List[Section] = []
         current_section: Optional[Section] = None
@@ -84,7 +90,7 @@ class SlideBuilder:
                 if current_section is None:
                     current_section = Section(
                         id=str(uuid.uuid4()),
-                        title=title or "Содержание",
+                        title=title or labels['content'],
                         order=len(sections) + 1,
                     )
                     sections.append(current_section)
@@ -104,7 +110,7 @@ class SlideBuilder:
             if current_slide is None:
                 current_slide = Slide(
                     id=str(uuid.uuid4()),
-                    title="Содержание",
+                    title=labels['content'],
                     text_blocks=[],
                     images=[],
                     source_pages=[],
@@ -112,12 +118,12 @@ class SlideBuilder:
             if current_section is None:
                 current_section = Section(
                     id=str(uuid.uuid4()),
-                    title="Содержание",
+                    title=labels['content'],
                     order=1,
                 )
                 sections.append(current_section)
             if slide_blocks >= self.max_blocks or slide_chars + len(text) > self.max_chars:
-                flush_slide(current_slide.title or "Страница")
+                flush_slide(current_slide.title or labels['page'])
             current_slide.text_blocks.append(text)
             if page not in current_slide.source_pages:
                 current_slide.source_pages.append(page)
@@ -185,16 +191,17 @@ class SlideBuilder:
                      len(sections), sum(len(s.slides) for s in sections))
         return sections
 
-    def _sections_from_images_only(self, images: List[LinkedImage]) -> List[Section]:
+    def _sections_from_images_only(self, images: List[LinkedImage], labels: dict = None) -> List[Section]:
+        labels = labels or DEFAULT_LABELS['ru']
         if not images:
-            return [Section(id=str(uuid.uuid4()), title="Содержание", order=1, slides=[
-                Slide(id=str(uuid.uuid4()), title="Страница 1", text_blocks=[], images=[], source_pages=[]),
+            return [Section(id=str(uuid.uuid4()), title=labels['content'], order=1, slides=[
+                Slide(id=str(uuid.uuid4()), title=f"{labels['page']} 1", text_blocks=[], images=[], source_pages=[]),
             ])]
-        sec = Section(id=str(uuid.uuid4()), title="Содержание", order=1)
+        sec = Section(id=str(uuid.uuid4()), title=labels['content'], order=1)
         for img in images:
             sec.slides.append(Slide(
                 id=str(uuid.uuid4()),
-                title="Изображение",
+                title=labels['image'],
                 text_blocks=[],
                 images=[img],
                 source_pages=[img.page_number],
@@ -316,9 +323,10 @@ def _log_heuristic_structure(sections: List[Section]) -> None:
 def build_slides_heuristic(
     paragraphs: List[ParagraphBlock],
     linked_images: List[LinkedImage],
+    language: str = 'ru',
 ) -> List[Section]:
     """Удобная функция: строит слайды по эвристикам."""
-    return SlideBuilder().build(paragraphs, linked_images)
+    return SlideBuilder().build(paragraphs, linked_images, language=language)
 
 
 MAX_SENTENCES_ON_SLIDE = 2
@@ -355,13 +363,14 @@ def sections_to_lecture(
     language: str = "ru",
 ) -> Lecture:
     """Section[] → Lecture (LectureSection, LecturePage, ContentBlock)."""
+    labels = DEFAULT_LABELS.get(language, DEFAULT_LABELS['ru'])
     lecture = Lecture(title=title, description=description, language=language)
     for sec in sections:
         ls = LectureSection(id=sec.id, title=sec.title, order=sec.order)
         for idx, slide in enumerate(sec.slides):
             page = LecturePage(
                 id=slide.id,
-                title=slide.title or f"Страница {idx + 1}",
+                title=slide.title or f"{labels['page']} {idx + 1}",
                 order=idx + 1,
             )
             for tb in slide.text_blocks:

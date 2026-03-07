@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Play, Loader, Menu, ChevronRight, ChevronLeft } from 'lucide-react';
 import JSZip from 'jszip';
-import { SCORMConfig } from '../types';
+import { SCORMConfig, Lang } from '../types';
+import { t } from '../i18n/translations';
 
 interface ScormPlayerProps {
+  lang?: Lang;
   packageBlob: Blob;
   config: SCORMConfig;
   onClose: () => void;
@@ -22,7 +24,7 @@ interface ScoItem {
   order: number;
 }
 
-export function ScormPlayer({ packageBlob, config, onClose }: ScormPlayerProps) {
+export function ScormPlayer({ lang = 'ru', packageBlob, config, onClose }: ScormPlayerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [manifest, setManifest] = useState<ManifestData | null>(null);
@@ -704,7 +706,7 @@ export function ScormPlayer({ packageBlob, config, onClose }: ScormPlayerProps) 
           <div className="w-64 bg-gray-800 border-r border-gray-700 overflow-y-auto">
             <div className="p-4">
               <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
-                Содержание
+                {t(lang, 'content')}
               </h3>
               <nav className="space-y-1">
                 {scoItems.map((sco, index) => (

@@ -1,7 +1,9 @@
 import { X, Download, FileText, Settings, CheckCircle, ArrowRight } from 'lucide-react';
-import { SCORMConfig, UploadedFile } from '../types';
+import { SCORMConfig, UploadedFile, Lang } from '../types';
+import { t } from '../i18n/translations';
 
 interface PackagePreviewModalProps {
+  lang: Lang;
   isOpen: boolean;
   onClose: () => void;
   onDownload: () => void;
@@ -11,7 +13,15 @@ interface PackagePreviewModalProps {
   files: UploadedFile[];
 }
 
+const PACKAGE_READY: Record<Lang, string> = { ru: 'SCORM пакет готов', en: 'SCORM package ready' };
+const PACKAGE_PREVIEW: Record<Lang, string> = { ru: 'Превью созданного пакета', en: 'Package preview' };
+const PACKAGE_INFO: Record<Lang, string> = { ru: 'Информация о пакете', en: 'Package info' };
+const COURSE_NAME: Record<Lang, string> = { ru: 'Название курса', en: 'Course name' };
+const PACKAGE_SIZE: Record<Lang, string> = { ru: 'Размер пакета', en: 'Package size' };
+const FILE_COUNT: Record<Lang, string> = { ru: 'Количество файлов', en: 'File count' };
+
 export function PackagePreviewModal({
+  lang,
   isOpen,
   onClose,
   onDownload,
@@ -45,10 +55,10 @@ export function PackagePreviewModal({
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                SCORM пакет готов
+                {PACKAGE_READY[lang]}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Превью созданного пакета
+                {PACKAGE_PREVIEW[lang]}
               </p>
             </div>
           </div>
@@ -67,19 +77,19 @@ export function PackagePreviewModal({
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
               <FileText className="w-5 h-5" />
-              <span>Информация о пакете</span>
+              <span>{PACKAGE_INFO[lang]}</span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Название курса</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">{COURSE_NAME[lang]}</div>
                 <div className="text-base font-medium text-gray-900 dark:text-white">{courseTitle}</div>
               </div>
               <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Размер пакета</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">{PACKAGE_SIZE[lang]}</div>
                 <div className="text-base font-medium text-gray-900 dark:text-white">{packageSize} МБ</div>
               </div>
               <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Количество файлов</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">{FILE_COUNT[lang]}</div>
                 <div className="text-base font-medium text-gray-900 dark:text-white">{files.length}</div>
               </div>
               <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
@@ -190,7 +200,7 @@ export function PackagePreviewModal({
               }}
               className="px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors cursor-pointer flex items-center space-x-2"
             >
-              <span>Далее</span>
+              <span>{t(lang, 'next')}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, DragEvent, useCallback } from 'react';
 import { Upload, Check, Loader2, ArrowRight } from 'lucide-react';
+import { Lang } from '../types';
+import { t } from '../i18n/translations';
+import { SupportBlock } from './SupportBlock';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-const WORDS = ['лекцию', 'практическое занятие', 'мультимедийные материалы'];
 const TYPE_MS = 70;
 const DELETE_MS = 35;
 const PAUSE_MS = 2200;
@@ -12,10 +14,17 @@ const GAP_MS = 400;
 type ConvertState = 'idle' | 'converting' | 'done';
 
 interface LandingPageProps {
+  lang: Lang;
   onNavigateToConstructor: () => void;
+  onConvertSuccess?: () => void;
 }
 
-export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
+const TYPEWRITER_WORDS: Record<Lang, string[]> = {
+  ru: ['лекцию', 'практическое занятие', 'мультимедийные материалы'],
+  en: ['lecture', 'workshop', 'multimedia materials'],
+};
+
+export function LandingPage({ lang, onNavigateToConstructor, onConvertSuccess }: LandingPageProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [convertState, setConvertState] = useState<ConvertState>('idle');
   const [fileName, setFileName] = useState('');
@@ -27,9 +36,9 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Typewriter effect ──────────────────────────────────────────
+  const words = TYPEWRITER_WORDS[lang];
   useEffect(() => {
-    const word = WORDS[wordIdx];
+    const word = words[wordIdx];
     let timer: ReturnType<typeof setTimeout>;
 
     if (!deleting) {
@@ -44,15 +53,15 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
       } else {
         timer = setTimeout(() => {
           setDeleting(false);
-          setWordIdx((i) => (i + 1) % WORDS.length);
+          setWordIdx((i) => (i + 1) % words.length);
         }, GAP_MS);
       }
     }
 
     return () => clearTimeout(timer);
-  }, [charIdx, deleting, wordIdx]);
+  }, [charIdx, deleting, wordIdx, words, lang]);
 
-  const visibleText = WORDS[wordIdx].slice(0, charIdx);
+  const visibleText = words[wordIdx].slice(0, charIdx);
 
   // ── Drag & drop ────────────────────────────────────────────────
   const onDragOver = useCallback((e: DragEvent) => {
@@ -105,6 +114,7 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
 
       const blob = await res.blob();
       setConvertState('done');
+      onConvertSuccess?.();
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -124,7 +134,6 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-10 sm:py-20">
       <div className="w-full max-w-2xl space-y-10">
-
         {/* ─── Quick-convert drop zone ─── */}
         <div
           onDragOver={onDragOver}
@@ -169,10 +178,10 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
               </div>
               <div>
                 <p className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Перетащите PDF файл
+                  {t(lang, 'dragPdf')}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  Мгновенная конвертация в SCORM — без настроек
+                  {t(lang, 'instantConvert')}
                 </p>
               </div>
             </div>
@@ -182,20 +191,20 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
             <div className="flex flex-col items-center space-y-5 animate-fadeIn">
               <Loader2 className="w-14 h-14 text-primary-500 animate-spin" />
               <p className="text-lg text-gray-700 dark:text-gray-300">
-                Конвертация{' '}
+                {t(lang, 'converting')}{' '}
                 <span className="font-semibold text-gray-900 dark:text-white">{fileName}</span>…
               </p>
             </div>
           )}
 
           {convertState === 'done' && (
-            <div className="flex flex-col items-center space-y-5 animate-fadeIn">
+            <div className="flex flex-col items-center space-y-5 animate-fadeIn pointer-events-auto">
               <div className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/30">
                 <Check className="w-8 h-8 text-white" />
               </div>
               <div>
                 <p className="text-lg font-medium text-gray-900 dark:text-white">
-                  Готово! Файл скачан
+                  {t(lang, 'done')}
                 </p>
                 <button
                   onClick={(e) => {
@@ -204,7 +213,7 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
                   }}
                   className="mt-2 text-sm text-primary-600 dark:text-primary-400 hover:underline cursor-pointer"
                 >
-                  Конвертировать ещё
+                  {t(lang, 'convertMore')}
                 </button>
               </div>
             </div>
@@ -215,7 +224,7 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
         <div className="flex items-center gap-4">
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
           <span className="text-sm font-medium text-gray-400 dark:text-gray-500 uppercase tracking-widest select-none">
-            или
+            {t(lang, 'or')}
           </span>
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
         </div>
@@ -234,7 +243,7 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
         >
           <div className="text-center space-y-1">
             <p className="text-xl sm:text-2xl leading-relaxed text-gray-600 dark:text-gray-300">
-              Сформируйте
+              {t(lang, 'formLecture')}
             </p>
             <p className="text-2xl sm:text-3xl font-bold leading-snug min-h-[2.4em] flex items-center justify-center">
               <span className="text-primary-600 dark:text-primary-400">
@@ -243,16 +252,17 @@ export function LandingPage({ onNavigateToConstructor }: LandingPageProps) {
               <span className="inline-block w-[3px] h-[1.1em] bg-primary-500 dark:bg-primary-400 ml-0.5 rounded-full animate-blink" />
             </p>
             <p className="text-xl sm:text-2xl leading-relaxed text-gray-600 dark:text-gray-300">
-              в формате SCORM
+              {t(lang, 'inScorm')}
             </p>
           </div>
 
           <div className="flex items-center justify-center mt-6 text-primary-600 dark:text-primary-400 opacity-70 group-hover:opacity-100 transition-all duration-300">
-            <span className="text-sm font-medium mr-2">Перейти в конструктор</span>
+            <span className="text-sm font-medium mr-2">{t(lang, 'goToConstructor')}</span>
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />
           </div>
         </div>
       </div>
+      <SupportBlock lang={lang} />
     </div>
   );
 }

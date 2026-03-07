@@ -1,6 +1,9 @@
 import { Download, Package } from 'lucide-react';
+import { Lang } from '../types';
+import { t } from '../i18n/translations';
 
 interface FooterProps {
+  lang: Lang;
   status: string;
   canGenerate: boolean;
   hasPackage: boolean;
@@ -10,6 +13,7 @@ interface FooterProps {
 }
 
 export function Footer({
+  lang,
   status,
   canGenerate,
   hasPackage,
@@ -37,8 +41,8 @@ export function Footer({
                 className="btn-secondary flex items-center space-x-2 flex-1 sm:flex-initial text-sm"
               >
                 <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Скачать последний пакет</span>
-                <span className="sm:hidden">Скачать</span>
+                <span className="hidden sm:inline">{t(lang, 'downloadLast')}</span>
+                <span className="sm:hidden">{t(lang, 'download')}</span>
               </button>
             )}
             
@@ -50,13 +54,13 @@ export function Footer({
               {isGenerating ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Генерация...</span>
+                  <span>{t(lang, 'generating')}</span>
                 </>
               ) : (
                 <>
                   <Package className="w-4 h-4" />
-                  <span className="hidden sm:inline">Создать SCORM пакет</span>
-                  <span className="sm:hidden">Создать</span>
+                  <span className="hidden sm:inline">{t(lang, 'generate')}</span>
+                  <span className="sm:hidden">{t(lang, 'generate')}</span>
                 </>
               )}
             </button>

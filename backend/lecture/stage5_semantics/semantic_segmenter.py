@@ -216,7 +216,8 @@ def _build_sections_from_llm_slides(
             )
 
     for s in all_slides_data:
-        title = (s.get("title") or "Страница").strip()[:100]
+        page_label = "Page" if language == "en" else "Страница"
+        title = (s.get("title") or page_label).strip()[:100]
         para_indices = s.get("paragraph_indices", [])
         image_indices = s.get("image_indices", [])
 

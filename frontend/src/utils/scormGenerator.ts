@@ -1,4 +1,4 @@
-import { SCORMConfig, UploadedFile } from '../types';
+import { SCORMConfig, UploadedFile, Lang } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
@@ -94,26 +94,43 @@ export async function generateScormPackage(
   }
 }
 
-export function validateConfig(config: SCORMConfig, files: UploadedFile[]): {
-  valid: boolean;
-  errors: string[];
-} {
+const VALIDATION_ERRORS: Record<Lang, Record<string, string>> = {
+  ru: {
+    noFiles: 'Необходимо загрузить хотя бы один файл',
+    noLaunchFile: 'Необходимо указать файл запуска (Launch file)',
+    thresholdRange: 'Порог завершения должен быть от 0 до 100%',
+  },
+  en: {
+    noFiles: 'At least one file must be uploaded',
+    noLaunchFile: 'Launch file must be specified',
+    thresholdRange: 'Completion threshold must be between 0 and 100%',
+  },
+};
+
+export function validateConfig(
+  config: SCORMConfig,
+  files: UploadedFile[],
+  lang: Lang = 'ru',
+): { valid: boolean; errors: string[] } {
+  const err = VALIDATION_ERRORS[lang];
   const errors: string[] = [];
-  
+
   if (files.length === 0) {
-    errors.push('Необходимо загрузить хотя бы один файл');
+    errors.push(err.noFiles);
   }
-  
-  const hasLaunchFile = files.some(f => f.isLaunchFile);
+
+  const hasLaunchFile = files.some((f) => f.isLaunchFile);
   if (!hasLaunchFile) {
-    errors.push('Необходимо указать файл запуска (Launch file)');
+    errors.push(err.noLaunchFile);
   }
-  
-  if (config.progressCompletion.completionThreshold < 0 ||
-      config.progressCompletion.completionThreshold > 100) {
-    errors.push('Порог завершения должен быть от 0 до 100%');
+
+  if (
+    config.progressCompletion.completionThreshold < 0 ||
+    config.progressCompletion.completionThreshold > 100
+  ) {
+    errors.push(err.thresholdRange);
   }
-  
+
   return {
     valid: errors.length === 0,
     errors,

@@ -6,7 +6,7 @@
 
 import logging
 import uuid
-from typing import List
+from typing import List, Optional
 
 from ..models.lecture_model import ParagraphBlock, DocumentSection
 
@@ -16,7 +16,7 @@ def build_sections(paragraphs: List[ParagraphBlock]) -> List[DocumentSection]:
         return []
 
     sections: List[DocumentSection] = []
-    current: DocumentSection | None = None
+    current: Optional[DocumentSection] = None
 
     for p in paragraphs:
         is_section_header = getattr(p, "is_header", False) and getattr(p, "header_level", 0) == 1

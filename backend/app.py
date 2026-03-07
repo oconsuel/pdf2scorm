@@ -149,12 +149,14 @@ def convert_to_scorm():
         if not all_parsed_elements:
             return jsonify({'error': 'No elements extracted from PDF'}), 400
 
+        ui_language = config.get('language', 'ru')
         lecture = build_lecture(
             all_parsed_elements,
             pdf_paths=pdf_paths,
             parser_temp_dir=parser_temp_dir,
             output_images_dir=None,
             pdf_selected_pages=pdf_selected_pages if pdf_selected_pages else None,
+            language=ui_language,
         )
 
         if config.get('title'):
